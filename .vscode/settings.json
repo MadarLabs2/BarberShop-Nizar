@@ -1,0 +1,10 @@
+{
+  "files.exclude": {
+    "**/dist": true,
+    "**/node_modules": true,
+    "**/*.map": true,
+    "**/*.tsbuildinfo": true
+  },
+  "typescript.tsdk": "apps/mobile/node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true
+}

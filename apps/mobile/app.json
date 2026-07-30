@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Barbershop V2",
+    "slug": "barbershop-v2",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.barbershop.v2"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.barbershop.v2",
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-video",
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "האפליקציה ניגשת לתמונות כדי להעלות תמונת מוצר לקטלוג."
+        }
+      ]
+    ]
+  }
+}

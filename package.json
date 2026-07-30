@@ -1,0 +1,11 @@
+{
+  "name": "barbershop-v2",
+  "private": true,
+  "scripts": {
+    "api": "cd apps/api && npm run start:dev",
+    "mobile": "cd apps/mobile && npm start"
+  },
+  "devDependencies": {
+    "supabase": "^2.84.5"
+  }
+}

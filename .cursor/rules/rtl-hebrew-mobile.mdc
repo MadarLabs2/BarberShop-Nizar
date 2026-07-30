@@ -1,0 +1,36 @@
+---
+description: Hebrew RTL layout and typography for barbershop mobile — required for all UI changes
+alwaysApply: true
+---
+
+# RTL (עברית) — חובה בכל שינוי UI
+
+האפליקציה מיועדת למשתמשים בעברית מימין לשמאל. **כל קומפוננטה, סטייל או מסך חדש חייבים להתאים ל־RTL.**
+
+## פריסה (Layout)
+
+- העדף **`marginStart` / `marginEnd`**, **`paddingStart` / `paddingEnd`** על פני `marginLeft` / `marginRight` כשהמרה אמורה להיפוך עם כיוון המסך.
+- פסי הדגשה (accent) בקצה הכרטיס: השתמש ב־**`borderStartWidth`** / **`borderEndWidth`** + צבע, לא רק `borderLeft` / `borderRight`.
+- מיקום אבסולוטי: כשמשתמשים ב־`left` / `right`, ציין בהערה אם זה מותאם ל־RTL או השתמש ב־**`start` / `end`** אם מתאים לגרסת React Native בפרויקט.
+- שורות אופקיות בעברית: **`flexDirection: 'row-reverse'`** או סיד ילדים שמתאים לקריאה מימין — עקבי עם `presets.rowHebrew` / דפוסים קיימים במסכים.
+
+## טיפוגרפיה
+
+- טקסט רגיל: **`textAlign: 'right'`** (חוץ מכותרות ממורכזות במודלים/כותרת שחורה).
+- שדות קלט ושורות בחירה: הוסף **`writingDirection: 'rtl'`** כשיש סיכון לערבוב עברית/אנגלית.
+- הרחב את **`textStyles`** ב־`theme/index.ts` במקום ליצור סטיילים חדשים עם יישור שגוי.
+
+## אייקונים ופעולות
+
+- חצים / חזרה: התאם לציפיית RTL (הבחירה בצד ה־start הלוגי).
+- אל תניח ש"הפריט הראשון" נמצא משמאל.
+
+## מה לא לעשות
+
+- לא להוסיף רק `marginLeft`/`marginRight` לאסימטריה בלי לחשוב על RTL.
+- לא להניח לוגיקה של LTR בגלריות, מגירות, ומודלים תחתונים.
+
+## עוגן בקוד
+
+- `apps/mobile/src/theme/index.ts` — טקסטים ו־`presets` בסיסיים ל־RTL.
+- קומפוננטות: `BlackHeader`, `PageIntro`, `BottomSheetModal` — דוגמאות לדפוסי יישור.

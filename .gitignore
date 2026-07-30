@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+# Optional Pulseem key file (PULSEEM_API_KEY_FILE); never commit secrets
+pulseem-api-key.txt
+.expo/
+.temp/
+*.log
+.DS_Store
