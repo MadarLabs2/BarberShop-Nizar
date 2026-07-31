@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   heroMediaClip: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: 'hidden',
   },
   heroImage: {
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   heroFade: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   emptyHero: {
     flex: 1,
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     writingDirection: 'rtl',
   },
   stockLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(255,255,255,0.72)',
     alignItems: 'center',
     justifyContent: 'center',

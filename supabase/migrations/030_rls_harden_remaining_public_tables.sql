@@ -14,18 +14,6 @@ CREATE POLICY "Public read staff_working_days active staff"
     )
   );
 
--- ---------------------------------------------------------------------------
--- staff_rest_days: was FOR ALL USING (true)
--- ---------------------------------------------------------------------------
-DROP POLICY IF EXISTS "Allow all staff_rest_days" ON public.staff_rest_days;
-CREATE POLICY "Public read staff_rest_days active staff"
-  ON public.staff_rest_days FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.staff s
-      WHERE s.id = staff_rest_days.staff_id AND s.is_active = true
-    )
-  );
 
 -- ---------------------------------------------------------------------------
 -- branch_staff: replace open read with active branch + active staff

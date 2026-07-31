@@ -859,7 +859,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   cardImageClip: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: 'hidden',
   },
   cardImageInner: {
@@ -912,7 +912,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   viewerMediaLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: 'hidden',
     zIndex: 0,
     backgroundColor: colors.surfaceMuted,
@@ -1034,7 +1034,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   viewerTapZones: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'row',
     zIndex: 4,
   },

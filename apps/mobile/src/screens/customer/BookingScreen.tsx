@@ -110,7 +110,7 @@ const galleryStyles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   avatarSpinner: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(255,255,255,0.75)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1398,7 +1398,7 @@ const styles = StyleSheet.create({
   },
   /** Full-screen layer above booking content (avoids native Modal touch bugs). */
   bookingSuccessOverlayRoot: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 2000,
     elevation: 2000,
   },
@@ -1497,7 +1497,7 @@ const bookingStyles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   confirmBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.overlayLight,
   },
   confirmSheet: {

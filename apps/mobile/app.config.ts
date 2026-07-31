@@ -11,7 +11,24 @@ if (fs.existsSync(rootEnv)) {
 export default ({ config }: ConfigContext): ExpoConfig =>
   ({
     ...config,
-    plugins: [...(config.plugins ?? []), '@react-native-community/datetimepicker', 'expo-notifications'],
+    plugins: [
+      ...(config.plugins ?? []),
+      '@react-native-community/datetimepicker',
+      'expo-notifications',
+      'expo-font',
+      'expo-image',
+      'expo-secure-store',
+      'expo-sharing',
+      [
+        'expo-splash-screen',
+        {
+          image: './assets/splash.png',
+          resizeMode: 'contain',
+          backgroundColor: '#ffffff',
+        },
+      ],
+      'expo-status-bar',
+    ],
     extra: {
       ...(config.extra ?? {}),
       apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000',

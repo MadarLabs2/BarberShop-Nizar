@@ -137,7 +137,7 @@ export function WheelTimePickerSheet({
 
 const styles = StyleSheet.create({
   inlineLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 2000,
     elevation: 28,
   },
