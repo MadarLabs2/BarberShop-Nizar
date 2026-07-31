@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
   deleteBtn: { padding: spacing.xs },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
   modalBackdrop: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.overlay,
   },
   modalKav: {

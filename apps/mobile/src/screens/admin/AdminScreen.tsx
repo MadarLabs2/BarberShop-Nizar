@@ -1593,7 +1593,7 @@ const styles = StyleSheet.create({
 const adminFormStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   backdropTapTarget: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
   },
   overlayScroll: {
     flexGrow: 1,

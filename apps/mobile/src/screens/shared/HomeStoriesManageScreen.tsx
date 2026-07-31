@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   thumbUploadOverlay: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',

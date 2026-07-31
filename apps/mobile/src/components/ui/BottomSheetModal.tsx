@@ -74,9 +74,9 @@ export function BottomSheetModal({ visible, onClose, title, children }: BottomSh
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay} accessibilityViewIsModal>
-        <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}>
+        <Animated.View style={[StyleSheet.absoluteFillObject, styles.backdrop, backdropStyle]}>
           <TouchableOpacity
-            style={StyleSheet.absoluteFill}
+            style={StyleSheet.absoluteFillObject}
             activeOpacity={1}
             onPress={onClose}
             accessibilityRole="button"

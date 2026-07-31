@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   modalDimmer: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalCard: {

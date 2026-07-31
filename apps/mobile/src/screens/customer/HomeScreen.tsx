@@ -1205,7 +1205,7 @@ const homeStyles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   productSheetBackdrop: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.overlayLight,
   },
   productSheetCard: {

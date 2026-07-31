@@ -439,7 +439,7 @@ const styles = StyleSheet.create({
   },
   /** Covers cells; receives tap, paste, and iOS SMS autofill. */
   hiddenOtpInput: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     opacity: Platform.OS === 'ios' ? 0.02 : 0.04,
     color: colors.text,
     fontSize: 18,

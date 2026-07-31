@@ -873,7 +873,7 @@ const dashStyles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   backdropTapTarget: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
   },
   modalOverlayScroll: {
     flexGrow: 1,
@@ -992,7 +992,7 @@ const dashStyles = StyleSheet.create({
   },
   /** Covers block modal; keeps iOS date sheet above the card without a nested Modal */
   blockPickerLayer: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     zIndex: 1500,
     elevation: 20,
   },

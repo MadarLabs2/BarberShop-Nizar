@@ -860,7 +860,7 @@ const styles = StyleSheet.create({
   aptService: { ...textStyles.bodyMedium, fontSize: 15, marginTop: spacing.xs, textAlign: 'right' },
   aptMeta: { ...textStyles.bodySmall, color: colors.textMuted, textAlign: 'right', marginTop: 4 },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
-  modalBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: colors.overlay },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
   modalKav: { width: '100%', maxHeight: Platform.OS === 'ios' ? '92%' : '94%' },
   modalSheet: {
     backgroundColor: colors.surface,

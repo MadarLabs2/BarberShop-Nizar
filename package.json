@@ -6,6 +6,6 @@
     "mobile": "cd apps/mobile && npm start"
   },
   "devDependencies": {
-    "supabase": "^2.110.0"
+    "supabase": "^2.84.5"
   }
 }
