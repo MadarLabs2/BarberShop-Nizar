@@ -6,6 +6,8 @@ export type Branch = {
   name: string;
   address: string | null;
   wazeLink: string | null;
+  phone: string | null;
+  instagramUrl: string | null;
   isActive: boolean;
 };
 export type Service = {
@@ -55,7 +57,7 @@ export async function getAdminCatalog(token: string): Promise<AdminCatalog> {
 
 export async function createBranch(
   token: string,
-  dto: { name: string; address?: string; wazeLink?: string }
+  dto: { name: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string }
 ): Promise<Branch> {
   return apiFetch<Branch>('/admin/branches', {
     method: 'POST',
@@ -67,7 +69,7 @@ export async function createBranch(
 export async function updateBranch(
   token: string,
   id: string,
-  dto: { name?: string; address?: string; wazeLink?: string; isActive?: boolean }
+  dto: { name?: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string; isActive?: boolean }
 ): Promise<Branch> {
   return apiFetch<Branch>(`/admin/branches/${id}`, {
     method: 'PATCH',

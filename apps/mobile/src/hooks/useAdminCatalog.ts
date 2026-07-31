@@ -242,7 +242,16 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editItem, setEditItem] = useState<Branch | Service | Staff | null>(null);
-  const [form, setForm] = useState({ name: '', address: '', wazeLink: '', price: '', duration: '', phone: '' });
+  const [form, setForm] = useState({
+    name: '',
+    address: '',
+    wazeLink: '',
+    price: '',
+    duration: '',
+    phone: '',
+    branchPhone: '',
+    instagramUrl: '',
+  });
   const [saving, setSaving] = useState(false);
   const [addStaffBranch, setAddStaffBranch] = useState<string | null>(null);
   const [addStaffServiceId, setAddStaffServiceId] = useState<string | null>(null);
@@ -320,7 +329,16 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
 
   const openAdd = useCallback(() => {
     setEditItem(null);
-    setForm({ name: '', address: '', wazeLink: '', price: '', duration: '', phone: '' });
+    setForm({
+      name: '',
+      address: '',
+      wazeLink: '',
+      price: '',
+      duration: '',
+      phone: '',
+      branchPhone: '',
+      instagramUrl: '',
+    });
     setModalVisible(true);
   }, []);
 
@@ -328,13 +346,40 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
     setEditItem(item);
     if ('address' in item) {
       const b = item as Branch;
-      setForm({ name: b.name, address: b.address ?? '', wazeLink: b.wazeLink ?? '', price: '', duration: '', phone: '' });
+      setForm({
+        name: b.name,
+        address: b.address ?? '',
+        wazeLink: b.wazeLink ?? '',
+        price: '',
+        duration: '',
+        phone: '',
+        branchPhone: b.phone ?? '',
+        instagramUrl: b.instagramUrl ?? '',
+      });
     } else if ('price' in item) {
       const s = item as Service;
-      setForm({ name: s.name, address: '', wazeLink: '', price: String(s.price), duration: String(s.duration), phone: '' });
+      setForm({
+        name: s.name,
+        address: '',
+        wazeLink: '',
+        price: String(s.price),
+        duration: String(s.duration),
+        phone: '',
+        branchPhone: '',
+        instagramUrl: '',
+      });
     } else {
       const st = item as Staff;
-      setForm({ name: st.name, address: '', wazeLink: '', price: '', duration: '', phone: st.phone ?? '' });
+      setForm({
+        name: st.name,
+        address: '',
+        wazeLink: '',
+        price: '',
+        duration: '',
+        phone: st.phone ?? '',
+        branchPhone: '',
+        instagramUrl: '',
+      });
     }
     setModalVisible(true);
   }, []);
@@ -361,12 +406,21 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
             name: form.name.trim(),
             address: form.address.trim() || undefined,
             wazeLink: form.wazeLink.trim() || undefined,
+            phone: form.branchPhone.trim() || undefined,
+            instagramUrl: form.instagramUrl.trim() || undefined,
           };
           if (editItem) {
             setBranches((list) =>
               list.map((b) =>
                 b.id === editItem.id
-                  ? { ...b, name: dto.name, address: dto.address ?? b.address ?? null, wazeLink: dto.wazeLink ?? b.wazeLink ?? null }
+                  ? {
+                      ...b,
+                      name: dto.name,
+                      address: dto.address ?? b.address ?? null,
+                      wazeLink: dto.wazeLink ?? b.wazeLink ?? null,
+                      phone: dto.phone ?? b.phone ?? null,
+                      instagramUrl: dto.instagramUrl ?? b.instagramUrl ?? null,
+                    }
                   : b
               )
             );
@@ -382,6 +436,8 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
               name: dto.name,
               address: dto.address ?? null,
               wazeLink: dto.wazeLink ?? null,
+              phone: dto.phone ?? null,
+              instagramUrl: dto.instagramUrl ?? null,
               isActive: true,
             };
             setBranches((list) => [...list, temp]);

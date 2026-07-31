@@ -146,6 +146,8 @@ export function AdminScreen() {
   const durationInputRef = useRef<TextInput>(null);
   const addressInputRef = useRef<TextInput>(null);
   const wazeInputRef = useRef<TextInput>(null);
+  const branchPhoneInputRef = useRef<TextInput>(null);
+  const instagramInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (!admin.modalVisible) {
@@ -1194,6 +1196,36 @@ export function AdminScreen() {
                     onChangeText={(tx) => admin.setForm((f) => ({ ...f, wazeLink: tx }))}
                     placeholderTextColor={colors.textMuted}
                     onFocus={() => setFocusedField('waze')}
+                    onBlur={() => setFocusedField(null)}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onSubmitEditing={() => branchPhoneInputRef.current?.focus()}
+                  />
+                  <TextInput
+                    ref={branchPhoneInputRef}
+                    style={[adminFormStyles.input, focusedField === 'branchPhone' && adminFormStyles.inputFocused]}
+                    placeholder={t('admin.branchPhonePh')}
+                    value={admin.form.branchPhone}
+                    onChangeText={(tx) => admin.setForm((f) => ({ ...f, branchPhone: tx }))}
+                    placeholderTextColor={colors.textMuted}
+                    onFocus={() => setFocusedField('branchPhone')}
+                    onBlur={() => setFocusedField(null)}
+                    keyboardType="phone-pad"
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onSubmitEditing={() => instagramInputRef.current?.focus()}
+                  />
+                  <TextInput
+                    ref={instagramInputRef}
+                    style={[adminFormStyles.input, focusedField === 'instagram' && adminFormStyles.inputFocused]}
+                    placeholder={t('admin.instagramPh')}
+                    value={admin.form.instagramUrl}
+                    onChangeText={(tx) => admin.setForm((f) => ({ ...f, instagramUrl: tx }))}
+                    placeholderTextColor={colors.textMuted}
+                    onFocus={() => setFocusedField('instagram')}
                     onBlur={() => setFocusedField(null)}
                     autoCapitalize="none"
                     autoCorrect={false}

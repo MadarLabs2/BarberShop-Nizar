@@ -1,6 +1,13 @@
 import { apiFetch } from './api';
 
-export type Branch = { id: string; name: string; address: string | null; wazeLink: string | null };
+export type Branch = {
+  id: string;
+  name: string;
+  address: string | null;
+  wazeLink: string | null;
+  phone: string | null;
+  instagramUrl: string | null;
+};
 export type Service = { id: string; name: string; price: number; duration: number };
 export type WorkingDayHours = { dayOfWeek: number; startTime: string; endTime: string };
 export type StaffService = { id: string; name: string; price: number; duration: number };

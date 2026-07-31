@@ -33,31 +33,32 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 import { Image as ExpoImage } from 'expo-image';
 import { useVideoPlayer, VideoView, type VideoPlayer } from 'expo-video';
-import { home } from '../../utils/assets';
+import { home, icons } from '../../utils/assets';
 import { useCatalogProducts } from '../../hooks/useCatalogProducts';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppointments } from '../../contexts/AppointmentsContext';
 import {
   acceptWaitlistOffer,
   cancelAppointment,
+  fetchBranches,
   getPendingWaitlistOffers,
 } from '../../services/bookings.api';
 import { prefetchAdminHeavyData } from '../../services/adminPrefetchCache';
 import { prefetchStaffDashboardData } from '../../services/staffPrefetchCache';
-import { prefetchCustomerTabData } from '../../services/customerPrefetchCache';
+import { prefetchCustomerTabData, peekBookingBranches } from '../../services/customerPrefetchCache';
 import { useNotifications } from '../../contexts/NotificationsContext';
-import type { AppointmentDto, CatalogProduct, WaitlistSlotOffer } from '../../services/bookings.api';
+import type { AppointmentDto, Branch, CatalogProduct, WaitlistSlotOffer } from '../../services/bookings.api';
 import {
   BRAND_NAME,
   BARBERSHOP_MAP_QUERY,
   BARBERSHOP_PHONE_INTL,
-  MADARLABS_CONTACT_EMAIL,
   MADARLABS_CONTACT_PHONE,
   MADARLABS_INSTAGRAM_URL,
   MADARLABS_INSTAGRAM_USERNAME,
-  SOCIAL_LINKS,
   buildProductInquiryWhatsAppUrl,
+  buildWhatsAppChatUrl,
 } from '../../lib/config';
+import { toE164 } from '../../utils/phone';
 import { openDrawer } from '../../utils/nav';
 import { formatDateDmy } from '../../utils/dates';
 import { colors, spacing, radius, shadows, layout, textStyles, iconSize } from '../../theme';
@@ -478,6 +479,8 @@ export function HomeScreen() {
   const [appointmentMenuFor, setAppointmentMenuFor] = useState<AppointmentDto | null>(null);
   const [productDetailFor, setProductDetailFor] = useState<CatalogProduct | null>(null);
   const [waitlistOffers, setWaitlistOffers] = useState<WaitlistSlotOffer[]>([]);
+  /** Admin-editable shop info (address/phone/email/Instagram) — first active branch, kept in sync via customer prefetch cache. */
+  const [shopBranch, setShopBranch] = useState<Branch | null>(() => peekBookingBranches()?.[0] ?? null);
   const lastFocusSyncAtRef = useRef(0);
   const riseY = useSharedValue(14);
   const riseOp = useSharedValue(0);
@@ -534,6 +537,22 @@ export function HomeScreen() {
     });
     return () => handle.cancel();
   }, [token, isPureCustomer, refresh, refreshNotifications]);
+
+  useEffect(() => {
+    if (shopBranch) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = peekBookingBranches() ?? (await fetchBranches());
+        if (!cancelled && list.length > 0) setShopBranch(list[0]);
+      } catch {
+        // Keep hardcoded fallback contact info if the branches fetch fails.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shopBranch]);
 
   const handleAcceptWaitlistOffer = useCallback(
     async (offer: WaitlistSlotOffer) => {
@@ -598,13 +617,16 @@ export function HomeScreen() {
   const hasAppointments = upcoming.length > 0;
 
   const handleCallBranch = () => {
-    Linking.openURL(`tel:${BARBERSHOP_PHONE_INTL}`);
+    Linking.openURL(`tel:${shopBranch?.phone || BARBERSHOP_PHONE_INTL}`);
     setAppointmentMenuFor(null);
   };
 
   const handleNavigateBranch = () => {
-    const branch = appointmentMenuFor?.branchName || BARBERSHOP_MAP_QUERY;
-    Linking.openURL(`https://waze.com/ul?q=${encodeURIComponent(branch)}`);
+    const branch = appointmentMenuFor?.branchName || shopBranch?.address || BARBERSHOP_MAP_QUERY;
+    const url = appointmentMenuFor?.branchName
+      ? `https://waze.com/ul?q=${encodeURIComponent(branch)}`
+      : shopBranch?.wazeLink || `https://waze.com/ul?q=${encodeURIComponent(branch)}`;
+    Linking.openURL(url);
     setAppointmentMenuFor(null);
   };
 
@@ -624,11 +646,12 @@ export function HomeScreen() {
   const openProductWhatsApp = useCallback(
     (productName: string) => {
       const msg = t('productCard.inquiryMessage', { name: productName });
-      Linking.openURL(buildProductInquiryWhatsAppUrl(msg));
+      Linking.openURL(buildProductInquiryWhatsAppUrl(msg, shopBranch?.phone));
     },
-    [t],
+    [t, shopBranch],
   );
 
+  /** Fixed MadarLabs (app builder) credit — not admin-editable, distinct from the shop's own Instagram. */
   const openMadarLabsInstagram = useCallback(() => {
     const deepLink = `instagram://user?username=${MADARLABS_INSTAGRAM_USERNAME}`;
     void Linking.canOpenURL(deepLink)
@@ -636,17 +659,29 @@ export function HomeScreen() {
       .catch(() => Linking.openURL(MADARLABS_INSTAGRAM_URL));
   }, []);
 
-  const openContactPhone = useCallback(() => {
-    void Linking.openURL(`tel:${MADARLABS_CONTACT_PHONE}`);
-  }, []);
+  const openShopInstagram = useCallback(() => {
+    const url = shopBranch?.instagramUrl;
+    if (!url) return;
+    const username = url.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/+$/, '');
+    const deepLink = `instagram://user?username=${username}`;
+    void Linking.canOpenURL(deepLink)
+      .then((canOpen) => Linking.openURL(canOpen ? deepLink : url))
+      .catch(() => Linking.openURL(url));
+  }, [shopBranch]);
 
-  const openContactEmail = useCallback(() => {
-    void Linking.openURL(`mailto:${MADARLABS_CONTACT_EMAIL}`);
-  }, []);
+  const openContactPhone = useCallback(() => {
+    void Linking.openURL(`tel:${shopBranch?.phone || MADARLABS_CONTACT_PHONE}`);
+  }, [shopBranch]);
 
   const openWazeToSalon = useCallback(() => {
-    void Linking.openURL(`https://waze.com/ul?q=${encodeURIComponent(BARBERSHOP_MAP_QUERY)}`);
-  }, []);
+    if (shopBranch?.wazeLink) {
+      void Linking.openURL(shopBranch.wazeLink);
+      return;
+    }
+    const query = shopBranch?.address || BARBERSHOP_MAP_QUERY;
+    void Linking.openURL(`https://waze.com/ul?q=${encodeURIComponent(query)}`);
+  }, [shopBranch]);
+
   const toggleAbout = useCallback(() => setAboutFlipped((prev) => !prev), []);
 
   const renderCatalogProduct = useCallback(
@@ -672,7 +707,7 @@ export function HomeScreen() {
         <View style={styles.headerTopRow}>
           <View style={styles.headerSideStart}>
             <View style={styles.headerIconWrapper}>
-              <Ionicons name="cut" size={22} color={colors.accent} />
+              <ExpoImage source={icons.logo} style={styles.headerLogo} contentFit="contain" />
             </View>
           </View>
           <View style={styles.headerTitleFlex}>
@@ -832,7 +867,7 @@ export function HomeScreen() {
                 <View style={homeStyles.socialRow}>
                   <TouchableOpacity
                     style={homeStyles.socialBtn}
-                    onPress={SOCIAL_LINKS.instagram ? () => Linking.openURL(SOCIAL_LINKS.instagram!) : undefined}
+                    onPress={openShopInstagram}
                     activeOpacity={0.7}
                     accessibilityRole="button"
                     accessibilityLabel={t('home.followUsInstagramA11y')}
@@ -850,7 +885,7 @@ export function HomeScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={homeStyles.socialBtn}
-                    onPress={SOCIAL_LINKS.whatsapp ? () => Linking.openURL(SOCIAL_LINKS.whatsapp!) : undefined}
+                    onPress={() => Linking.openURL(buildWhatsAppChatUrl(shopBranch?.phone))}
                     activeOpacity={0.7}
                     accessibilityRole="button"
                     accessibilityLabel={t('home.followUsWhatsappA11y')}
@@ -865,29 +900,14 @@ export function HomeScreen() {
                     onPress={openContactPhone}
                     activeOpacity={0.82}
                     accessibilityRole="button"
-                    accessibilityLabel={MADARLABS_CONTACT_PHONE}
+                    accessibilityLabel={shopBranch?.phone || MADARLABS_CONTACT_PHONE}
                   >
                     <View style={homeStyles.contactIconWrap}>
                       <Ionicons name="call-outline" size={18} color={colors.accent} />
                     </View>
                     <View style={homeStyles.contactTextWrap}>
                       <Text style={homeStyles.contactLabel}>{t('home.contactPhone')}</Text>
-                      <Text style={homeStyles.contactValue}>{MADARLABS_CONTACT_PHONE}</Text>
-                    </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={homeStyles.contactRow}
-                    onPress={openContactEmail}
-                    activeOpacity={0.82}
-                    accessibilityRole="button"
-                    accessibilityLabel={MADARLABS_CONTACT_EMAIL}
-                  >
-                    <View style={homeStyles.contactIconWrap}>
-                      <Ionicons name="mail-outline" size={18} color={colors.accent} />
-                    </View>
-                    <View style={homeStyles.contactTextWrap}>
-                      <Text style={homeStyles.contactLabel}>{t('home.contactEmail')}</Text>
-                      <Text style={homeStyles.contactValueEmail}>{MADARLABS_CONTACT_EMAIL}</Text>
+                      <Text style={homeStyles.contactValue}>{shopBranch?.phone || MADARLABS_CONTACT_PHONE}</Text>
                     </View>
                   </TouchableOpacity>
                   <View style={homeStyles.contactRow}>
@@ -903,7 +923,7 @@ export function HomeScreen() {
                     </TouchableOpacity>
                     <View style={homeStyles.contactTextWrap}>
                       <Text style={homeStyles.contactLabel}>{t('home.contactLocation')}</Text>
-                      <Text style={homeStyles.contactValueLocation}>{BARBERSHOP_MAP_QUERY}</Text>
+                      <Text style={homeStyles.contactValueLocation}>{shopBranch?.address || BARBERSHOP_MAP_QUERY}</Text>
                       <View style={homeStyles.contactWazeHintRow}>
                         <Ionicons name="open-outline" size={14} color={colors.textSecondary} />
                         <Text style={homeStyles.contactWazeHintText}>{t('home.contactWazeHint')}</Text>
@@ -918,6 +938,16 @@ export function HomeScreen() {
                     accessibilityLabel="MadrLabs"
                   >
                     <Text style={homeStyles.madarLabsLineText}>{t('home.madarLabsBuildLine')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={homeStyles.madarLabsInstagramRow}
+                    onPress={openMadarLabsInstagram}
+                    activeOpacity={0.82}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('home.madarLabsInstagramA11y')}
+                  >
+                    <Ionicons name="logo-instagram" size={16} color={colors.accent} />
+                    <Text style={homeStyles.madarLabsInstagramText}>{t('home.madarLabsInstagramLabel')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1012,14 +1042,16 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: colors.accent,
-    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
   },
+  headerLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
     color: colors.onHeader,
     letterSpacing: 2,
@@ -1641,14 +1673,6 @@ const homeStyles = StyleSheet.create({
     writingDirection: 'ltr',
     marginTop: 2,
   },
-  contactValueEmail: {
-    ...textStyles.bodySmall,
-    color: colors.text,
-    fontWeight: '600',
-    textAlign: 'right',
-    writingDirection: 'ltr',
-    marginTop: 2,
-  },
   contactValueLocation: {
     ...textStyles.bodyMedium,
     color: colors.text,
@@ -1685,6 +1709,20 @@ const homeStyles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
     lineHeight: 21,
+  },
+  madarLabsInstagramRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    alignSelf: 'stretch',
+  },
+  madarLabsInstagramText: {
+    ...textStyles.bodySmall,
+    color: colors.text,
+    fontWeight: '600',
   },
   ratingLink: { color: colors.accent, fontWeight: '600', textDecorationLine: 'underline' },
 });

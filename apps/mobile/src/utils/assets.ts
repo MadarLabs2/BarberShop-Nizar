@@ -11,6 +11,8 @@ export const icons = {
   splash: require('../../assets/splash.png'),
   adaptiveIcon: require('../../assets/adaptive-icon.png'),
   favicon: require('../../assets/favicon.png'),
+  /** Barbershop pole logo — Home header, beside the brand title */
+  logo: require('../../assets/logo.png'),
 } as const;
 
 // Home screen media

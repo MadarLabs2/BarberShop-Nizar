@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Linking, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
@@ -10,21 +11,47 @@ import { PageIntro } from '../../components/ui/PageIntro';
 import { AppButton } from '../../components/ui/AppButton';
 import { openDrawer } from '../../utils/nav';
 import { BARBERSHOP_MAP_QUERY, BARBERSHOP_PHONE_INTL } from '../../lib/config';
+import { fetchBranches, type Branch } from '../../services/bookings.api';
+import { peekBookingBranches } from '../../services/customerPrefetchCache';
 import { colors, spacing, radius, presets, textStyles, shadows, iconSize, layout } from '../../theme';
 
 export function DirectionsScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<{ navigate: (name: string) => void; openDrawer?: () => void }>();
+  /** Admin-editable shop info (address/phone) — first active branch, kept in sync via customer prefetch cache. */
+  const [shopBranch, setShopBranch] = useState<Branch | null>(() => peekBookingBranches()?.[0] ?? null);
 
-  const openWaze = () =>
-    Linking.openURL(`https://waze.com/ul?q=${encodeURIComponent(BARBERSHOP_MAP_QUERY)}`);
+  useEffect(() => {
+    if (shopBranch) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = peekBookingBranches() ?? (await fetchBranches());
+        if (!cancelled && list.length > 0) setShopBranch(list[0]);
+      } catch {
+        // Keep hardcoded fallback contact info if the branches fetch fails.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shopBranch]);
 
-  const openGoogleMaps = () =>
-    Linking.openURL(
-      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(BARBERSHOP_MAP_QUERY)}`,
-    );
+  const openWaze = () => {
+    if (shopBranch?.wazeLink) {
+      Linking.openURL(shopBranch.wazeLink);
+      return;
+    }
+    const query = shopBranch?.address || BARBERSHOP_MAP_QUERY;
+    Linking.openURL(`https://waze.com/ul?q=${encodeURIComponent(query)}`);
+  };
 
-  const callShop = () => Linking.openURL(`tel:${BARBERSHOP_PHONE_INTL}`);
+  const openGoogleMaps = () => {
+    const query = shopBranch?.address || BARBERSHOP_MAP_QUERY;
+    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`);
+  };
+
+  const callShop = () => Linking.openURL(`tel:${shopBranch?.phone || BARBERSHOP_PHONE_INTL}`);
 
   return (
     <Screen style={styles.wrapper} noPadding>
@@ -41,7 +68,11 @@ export function DirectionsScreen() {
           <View style={styles.mapIconWrap}>
             <Ionicons name="location" size={40} color={colors.accent} />
           </View>
-          <Text style={styles.addressHint}>{t('directions.addressHint')}</Text>
+          {shopBranch?.address ? (
+            <Text style={styles.addressText}>{shopBranch.address}</Text>
+          ) : (
+            <Text style={styles.addressHint}>{t('directions.addressHint')}</Text>
+          )}
           <AppButton title={t('directions.waze')} onPress={openWaze} variant="primary" style={styles.cta} />
           <AppButton
             title={t('directions.googleMaps')}
@@ -94,6 +125,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.md,
     color: colors.textSecondary,
+  },
+  addressText: {
+    ...textStyles.bodyMedium,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+    color: colors.text,
+    fontWeight: '600',
   },
   cta: { marginBottom: spacing.sm, minHeight: layout.hitMin - 4, paddingVertical: 12 },
   ctaSecondary: { marginBottom: spacing.md, minHeight: layout.hitMin - 4, paddingVertical: 12 },

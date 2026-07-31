@@ -157,11 +157,12 @@ export const ar: TranslationTree = {
     followUsWhatsappA11y: 'فتح محادثة واتساب',
     contactUsTitle: 'تواصل معنا',
     contactPhone: 'الهاتف',
-    contactEmail: 'البريد الإلكتروني',
     contactLocation: 'الموقع',
     contactWazeHint: 'اضغط للفتح في Waze',
     wazeNavigateA11y: 'فتح التنقل في Waze',
     madarLabsBuildLine: 'لتطوير تطبيقات ومواقع ويب للأعمال — تواصلوا مع MadrLabs.',
+    madarLabsInstagramLabel: 'MadrLabs',
+    madarLabsInstagramA11y: 'فتح صفحة إنستغرام الخاصة بـ MadrLabs',
     rateApp: 'أعجبكم التطبيق؟ قيّمونا',
     rateThanks: 'شكراً!',
     rateLater: 'تقييم التطبيق سيتاح بعد النشر في المتاجر.',
@@ -189,7 +190,7 @@ export const ar: TranslationTree = {
     aboutBody: `حرية الإبداع مع المقص — لا نجاري الموضة، بل نصنعها.
 ندعوكم إلى ترك الروتين جانباً وإفساح المجال للفنّ.
 من قصّات التنعيم والفرد الاحترافية إلى القصّات العصرية الجريئة، ومنتجات العناية بالشعر من أرقى الماركات العالمية — كل ذلك تحت سقف واحد.
-محمد أبو جومعة — تجربة من نوع آخر.`,
+نزار شديد — تجربة من نوع آخر.`,
   },
   appointmentCard: {
     atStaff: 'عند {{name}}',
@@ -537,6 +538,8 @@ export const ar: TranslationTree = {
     minutesPh: 'الدقائق',
     addressPh: 'العنوان',
     wazePh: 'رابط Waze (اختياري)',
+    branchPhonePh: 'هاتف الصالون (اختياري)',
+    instagramPh: 'رابط إنستغرام (اختياري)',
     pricePh: 'السعر',
     timeEnd: 'وقت الانتهاء',
     timeStart: 'وقت البدء',

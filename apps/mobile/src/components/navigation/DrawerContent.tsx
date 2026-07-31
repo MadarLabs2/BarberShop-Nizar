@@ -22,7 +22,8 @@ import { getDrawerMenuItems, canAccessDashboardCaps } from '../../lib/navigation
 import type { DrawerMenuItem, MenuItemTarget } from '../../lib/navigation.roles';
 import { LanguageSwitcher } from '../settings/LanguageSwitcher';
 import { ScalePressable } from '../ui/ScalePressable';
-import { MADARLABS_INSTAGRAM_URL, MADARLABS_INSTAGRAM_USERNAME } from '../../lib/config';
+import { fetchBranches, type Branch } from '../../services/bookings.api';
+import { peekBookingBranches } from '../../services/customerPrefetchCache';
 import { colors, radius } from '../../theme';
 
 /** Visual section breaks without a line on every row (RTL drawer). */
@@ -49,6 +50,25 @@ function DrawerContentInner(props: DrawerContentComponentProps) {
   const badgeSnapshotRef = useRef({ upcoming: 0, unread: 0 });
   const drawerWasOpenRef = useRef(false);
   const [badges, setBadges] = useState(() => ({ ...badgeSnapshotRef.current }));
+
+  /** Admin-editable shop Instagram — first active branch, kept in sync via customer prefetch cache. */
+  const [shopBranch, setShopBranch] = useState<Branch | null>(() => peekBookingBranches()?.[0] ?? null);
+
+  useEffect(() => {
+    if (shopBranch) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = peekBookingBranches() ?? (await fetchBranches());
+        if (!cancelled && list.length > 0) setShopBranch(list[0]);
+      } catch {
+        // Keep the brand footer inert if the branches fetch fails.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shopBranch]);
 
   useEffect(() => {
     const open = drawerStatus === 'open';
@@ -152,11 +172,14 @@ function DrawerContentInner(props: DrawerContentComponentProps) {
   }, [props.navigation]);
 
   const onFooterBrandPress = useCallback(() => {
-    const deepLink = `instagram://user?username=${MADARLABS_INSTAGRAM_USERNAME}`;
+    const url = shopBranch?.instagramUrl;
+    if (!url) return;
+    const username = url.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/+$/, '');
+    const deepLink = `instagram://user?username=${username}`;
     void Linking.canOpenURL(deepLink)
-      .then((canOpen) => Linking.openURL(canOpen ? deepLink : MADARLABS_INSTAGRAM_URL))
-      .catch(() => Linking.openURL(MADARLABS_INSTAGRAM_URL));
-  }, []);
+      .then((canOpen) => Linking.openURL(canOpen ? deepLink : url))
+      .catch(() => Linking.openURL(url));
+  }, [shopBranch]);
 
   const avatarSource = useMemo(
     () => (user?.avatarUrl ? { uri: user.avatarUrl } : null),
@@ -292,9 +315,9 @@ function DrawerContentInner(props: DrawerContentComponentProps) {
           onPress={onFooterBrandPress}
           activeOpacity={0.8}
           accessibilityRole="button"
-          accessibilityLabel="MadarLabs"
+          accessibilityLabel="NezarBarberShop"
         >
-          <Text style={styles.logoText}>MadarLabs</Text>
+          <Text style={styles.logoText}>NezarBarberShop</Text>
           <Ionicons name="logo-instagram" size={18} color={colors.accent} />
         </TouchableOpacity>
       </View>

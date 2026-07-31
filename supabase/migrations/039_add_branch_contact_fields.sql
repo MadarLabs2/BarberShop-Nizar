@@ -1,0 +1,3 @@
+ALTER TABLE branches
+  ADD COLUMN IF NOT EXISTS phone TEXT,
+  ADD COLUMN IF NOT EXISTS instagram_url TEXT;

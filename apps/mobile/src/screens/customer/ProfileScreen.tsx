@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
@@ -16,10 +17,13 @@ import { openDrawer } from '../../utils/nav';
 import {
   BARBERSHOP_PHONE,
   BARBERSHOP_PHONE_INTL,
-  WHATSAPP_CHAT_URL,
   TERMS_URL,
   PRIVACY_URL,
+  buildWhatsAppChatUrl,
 } from '../../lib/config';
+import { toE164 } from '../../utils/phone';
+import { fetchBranches, type Branch } from '../../services/bookings.api';
+import { peekBookingBranches } from '../../services/customerPrefetchCache';
 import type { RootDrawerParamList } from '../../navigation/paramList';
 import { colors, spacing, radius, presets, textStyles, shadows, iconSize, layout } from '../../theme';
 import { formatIsoDateDmy } from '../../utils/dates';
@@ -79,14 +83,35 @@ export function ProfileScreen() {
     }
   };
 
+  /** Admin-editable shop phone — first active branch, kept in sync via customer prefetch cache. */
+  const [shopBranch, setShopBranch] = useState<Branch | null>(() => peekBookingBranches()?.[0] ?? null);
+
+  useEffect(() => {
+    if (shopBranch) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = peekBookingBranches() ?? (await fetchBranches());
+        if (!cancelled && list.length > 0) setShopBranch(list[0]);
+      } catch {
+        // Keep hardcoded fallback contact info if the branches fetch fails.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shopBranch]);
+
+  const shopPhoneDisplay = shopBranch?.phone || BARBERSHOP_PHONE;
+
   const openWhatsApp = () => {
-    Linking.openURL(WHATSAPP_CHAT_URL).catch(() => {
+    Linking.openURL(buildWhatsAppChatUrl(shopBranch?.phone)).catch(() => {
       Alert.alert(t('common.error'), t('profile.waOpenError'));
     });
   };
 
   const openDialer = () => {
-    const tel = `tel:${BARBERSHOP_PHONE_INTL.replace(/\s/g, '')}`;
+    const tel = `tel:${shopBranch?.phone ? toE164(shopBranch.phone) : BARBERSHOP_PHONE_INTL.replace(/\s/g, '')}`;
     Linking.openURL(tel).catch(() => {});
   };
 
@@ -159,14 +184,14 @@ export function ProfileScreen() {
           <View style={styles.whatsappTextWrap}>
             <Text style={styles.whatsappTitle}>{t('profile.waTitle')}</Text>
             <Text style={styles.whatsappSub}>{t('profile.waSub')}</Text>
-            <Text style={styles.whatsappPhone}>{BARBERSHOP_PHONE}</Text>
+            <Text style={styles.whatsappPhone}>{shopPhoneDisplay}</Text>
           </View>
           <Ionicons name="chevron-forward" size={iconSize.md} color={colors.textMuted} style={styles.whatsappChevron} />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.phoneRow} onPress={openDialer} activeOpacity={0.85}>
           <Ionicons name="call" size={iconSize.lg} color={colors.accent} />
-          <Text style={styles.phoneRowText}>{t('profile.dialQuick', { phone: BARBERSHOP_PHONE })}</Text>
+          <Text style={styles.phoneRowText}>{t('profile.dialQuick', { phone: shopPhoneDisplay })}</Text>
         </TouchableOpacity>
 
         <Text style={styles.sectionLabel}>{t('profile.accountSection')}</Text>

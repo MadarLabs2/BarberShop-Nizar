@@ -9,7 +9,14 @@ import {
 } from './core/cache.service';
 import { SupabaseService } from './core/supabase';
 
-export type BranchDto = { id: string; name: string; address: string | null; wazeLink: string | null };
+export type BranchDto = {
+  id: string;
+  name: string;
+  address: string | null;
+  wazeLink: string | null;
+  phone: string | null;
+  instagramUrl: string | null;
+};
 export type ServiceDto = { id: string; name: string; price: number; duration: number };
 export type StaffDto = {
   id: string;
@@ -36,16 +43,27 @@ export class CatalogService {
     const { data, error } = await this.supabase
       .getClient()
       .from('branches')
-      .select('id, name, address, waze_link')
+      .select('id, name, address, waze_link, phone, instagram_url')
       .eq('is_active', true)
       .order('name');
     if (error) return [];
-    return (data || []).map((r: { id: string; name: string; address: string | null; waze_link: string | null }) => ({
-      id: r.id,
-      name: r.name,
-      address: r.address ?? null,
-      wazeLink: r.waze_link ?? null,
-    }));
+    return (data || []).map(
+      (r: {
+        id: string;
+        name: string;
+        address: string | null;
+        waze_link: string | null;
+        phone: string | null;
+        instagram_url: string | null;
+      }) => ({
+        id: r.id,
+        name: r.name,
+        address: r.address ?? null,
+        wazeLink: r.waze_link ?? null,
+        phone: r.phone ?? null,
+        instagramUrl: r.instagram_url ?? null,
+      }),
+    );
   }
 
   async getBranches(): Promise<BranchDto[]> {
@@ -171,21 +189,32 @@ export class CatalogService {
       branchIds.length > 0
         ? await client
             .from('branches')
-            .select('id, name, address, waze_link')
+            .select('id, name, address, waze_link, phone, instagram_url')
             .in('id', branchIds)
             .eq('is_active', true)
         : { data: [] };
 
     const branchById = new Map(
-      (brRows || []).map((r: { id: string; name: string; address: string | null; waze_link: string | null }) => [
-        r.id,
-        {
-          id: r.id,
-          name: r.name,
-          address: r.address ?? null,
-          wazeLink: r.waze_link ?? null,
-        } satisfies BranchDto,
-      ]),
+      (brRows || []).map(
+        (r: {
+          id: string;
+          name: string;
+          address: string | null;
+          waze_link: string | null;
+          phone: string | null;
+          instagram_url: string | null;
+        }) => [
+          r.id,
+          {
+            id: r.id,
+            name: r.name,
+            address: r.address ?? null,
+            wazeLink: r.waze_link ?? null,
+            phone: r.phone ?? null,
+            instagramUrl: r.instagram_url ?? null,
+          } satisfies BranchDto,
+        ],
+      ),
     );
 
     const serviceIds = [...new Set((staffServiceRows || []).map((r: { service_id: string }) => r.service_id))];
@@ -380,16 +409,27 @@ export class CatalogService {
       const { data: brRows } = await this.supabase
         .getClient()
         .from('branches')
-        .select('id, name, address, waze_link')
+        .select('id, name, address, waze_link, phone, instagram_url')
         .in('id', branchIds)
         .eq('is_active', true)
         .order('name');
-      branches = (brRows || []).map((r: { id: string; name: string; address: string | null; waze_link: string | null }) => ({
-        id: r.id,
-        name: r.name,
-        address: r.address ?? null,
-        wazeLink: r.waze_link ?? null,
-      }));
+      branches = (brRows || []).map(
+        (r: {
+          id: string;
+          name: string;
+          address: string | null;
+          waze_link: string | null;
+          phone: string | null;
+          instagram_url: string | null;
+        }) => ({
+          id: r.id,
+          name: r.name,
+          address: r.address ?? null,
+          wazeLink: r.waze_link ?? null,
+          phone: r.phone ?? null,
+          instagramUrl: r.instagram_url ?? null,
+        }),
+      );
     }
 
     const { data: workingDaysRows } = await this.supabase

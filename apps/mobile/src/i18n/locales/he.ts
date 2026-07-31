@@ -156,11 +156,12 @@ export const he = {
     followUsWhatsappA11y: 'פתיחת שיחת וואטסאפ',
     contactUsTitle: 'צרו קשר',
     contactPhone: 'טלפון',
-    contactEmail: 'אימייל',
     contactLocation: 'מיקום',
     contactWazeHint: 'לחיצה לפתיחה ב־Waze',
     wazeNavigateA11y: 'פתיחת ניווט ב־Waze',
     madarLabsBuildLine: 'לבניית אפליקציות ואתרי אינטרנט לעסק — דברו עם MadrLabs.',
+    madarLabsInstagramLabel: 'MadrLabs',
+    madarLabsInstagramA11y: 'פתיחת עמוד האינסטגרם של MadrLabs',
     rateApp: 'אהבתם את האפליקציה? דרגו אותנו',
     rateThanks: 'תודה!',
     rateLater: 'דירוג האפליקציה יהיה זמין לאחר הפרסום בחנויות.',
@@ -188,10 +189,10 @@ export const he = {
     aboutBody: `החופש עם המספריים – לא עוקבים אחרי טרנדים אלא יוצרים אותם.
 מזמינים אתכם להשאיר מאחור את השגרה ולפנות מקום לאומנות.
 תספורות מגה-לישור, תספורות מגניבות, מוצרי שיער ממותגים – הכול במקום אחד.
-מוחמד אבו ג׳ומא – חוויה אחרת.`,
+נזאר שדיד – חוויה אחרת.`,
   },
   appointmentCard: {
-    atStaff: 'אצל {{name}}',
+    atStaff: 'אצל {\{name}}',
     delete: 'מחיקה',
     edit: 'עריכה',
     cancelTap: 'לחץ לביטול התור',
@@ -541,6 +542,8 @@ export const he = {
     minutesPh: 'דקות',
     addressPh: 'כתובת',
     wazePh: 'קישור Waze (אופציונלי)',
+    branchPhonePh: 'טלפון המספרה (אופציונלי)',
+    instagramPh: 'קישור אינסטגרם (אופציונלי)',
     pricePh: 'מחיר',
     timeEnd: 'שעת סיום',
     timeStart: 'שעת התחלה',

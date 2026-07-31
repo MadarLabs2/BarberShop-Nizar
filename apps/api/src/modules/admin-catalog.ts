@@ -59,7 +59,15 @@ function releasedProfilePhoneValue(): string {
     .padStart(3, '0')}`.slice(-9);
 }
 
-type BranchRow = { id: string; name: string; address: string | null; waze_link: string | null; is_active: boolean };
+type BranchRow = {
+  id: string;
+  name: string;
+  address: string | null;
+  waze_link: string | null;
+  phone: string | null;
+  instagram_url: string | null;
+  is_active: boolean;
+};
 type ServiceRow = { id: string; name: string; price: number; duration: number; is_active: boolean };
 type StaffRow = {
   id: string;
@@ -96,13 +104,21 @@ export class AdminCatalogService {
   ) {}
 
   private async fetchCatalogAll(): Promise<{
-    branches: { id: string; name: string; address: string | null; wazeLink: string | null; isActive: boolean }[];
+    branches: {
+      id: string;
+      name: string;
+      address: string | null;
+      wazeLink: string | null;
+      phone: string | null;
+      instagramUrl: string | null;
+      isActive: boolean;
+    }[];
     services: { id: string; name: string; price: number; duration: number; isActive: boolean }[];
     staff: AdminStaffDto[];
   }> {
     const client = this.supabase.getClient();
     const [{ data: branches }, { data: services }, { data: staff }] = await Promise.all([
-      client.from('branches').select('id, name, address, waze_link, is_active').order('name'),
+      client.from('branches').select('id, name, address, waze_link, phone, instagram_url, is_active').order('name'),
       client.from('services').select('id, name, price, duration, is_active').order('name'),
       client.from('staff').select('id, name, phone, avatar_url, is_active, profile_id, can_block_own_time, can_set_own_working_hours').order('name'),
     ]);
@@ -113,6 +129,8 @@ export class AdminCatalogService {
         name: r.name,
         address: r.address ?? null,
         wazeLink: r.waze_link ?? null,
+        phone: r.phone ?? null,
+        instagramUrl: r.instagram_url ?? null,
         isActive: r.is_active !== false,
       })),
       services: (services || []).map((r: ServiceRow) => ({
@@ -136,14 +154,22 @@ export class AdminCatalogService {
   }
 
   async getCatalogAll(): Promise<{
-    branches: { id: string; name: string; address: string | null; wazeLink: string | null; isActive: boolean }[];
+    branches: {
+      id: string;
+      name: string;
+      address: string | null;
+      wazeLink: string | null;
+      phone: string | null;
+      instagramUrl: string | null;
+      isActive: boolean;
+    }[];
     services: { id: string; name: string; price: number; duration: number; isActive: boolean }[];
     staff: AdminStaffDto[];
   }> {
     return this.cache.getOrSet(CACHE_KEY_ADMIN_CATALOG, TTL_ADMIN_CATALOG, () => this.fetchCatalogAll());
   }
 
-  async createBranch(dto: { name: string; address?: string; wazeLink?: string }) {
+  async createBranch(dto: { name: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string }) {
     if (!dto.name?.trim()) throw new BadRequestException('Name required');
     const { data, error } = await this.supabase
       .getClient()
@@ -152,32 +178,55 @@ export class AdminCatalogService {
         name: dto.name.trim(),
         address: dto.address?.trim() || null,
         waze_link: dto.wazeLink?.trim() || null,
+        phone: dto.phone?.trim() || null,
+        instagram_url: dto.instagramUrl?.trim() || null,
       })
-      .select('id, name, address, waze_link, is_active')
+      .select('id, name, address, waze_link, phone, instagram_url, is_active')
       .single();
     if (error) throw new BadRequestException(error.message);
     const r = data as BranchRow;
-    const out = { id: r.id, name: r.name, address: r.address ?? null, wazeLink: r.waze_link ?? null, isActive: r.is_active !== false };
+    const out = {
+      id: r.id,
+      name: r.name,
+      address: r.address ?? null,
+      wazeLink: r.waze_link ?? null,
+      phone: r.phone ?? null,
+      instagramUrl: r.instagram_url ?? null,
+      isActive: r.is_active !== false,
+    };
     await this.cache.invalidateCatalogAndAdmin();
     return out;
   }
 
-  async updateBranch(id: string, dto: { name?: string; address?: string; wazeLink?: string; isActive?: boolean }) {
+  async updateBranch(
+    id: string,
+    dto: { name?: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string; isActive?: boolean },
+  ) {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (dto.name !== undefined) updates.name = dto.name.trim();
     if (dto.address !== undefined) updates.address = dto.address?.trim() || null;
     if (dto.wazeLink !== undefined) updates.waze_link = dto.wazeLink?.trim() || null;
+    if (dto.phone !== undefined) updates.phone = dto.phone?.trim() || null;
+    if (dto.instagramUrl !== undefined) updates.instagram_url = dto.instagramUrl?.trim() || null;
     if (dto.isActive !== undefined) updates.is_active = !!dto.isActive;
     const { data, error } = await this.supabase
       .getClient()
       .from('branches')
       .update(updates)
       .eq('id', id)
-      .select('id, name, address, waze_link, is_active')
+      .select('id, name, address, waze_link, phone, instagram_url, is_active')
       .single();
     if (error) throw new BadRequestException(error.message);
     const r = data as BranchRow;
-    const out = { id: r.id, name: r.name, address: r.address ?? null, wazeLink: r.waze_link ?? null, isActive: r.is_active !== false };
+    const out = {
+      id: r.id,
+      name: r.name,
+      address: r.address ?? null,
+      wazeLink: r.waze_link ?? null,
+      phone: r.phone ?? null,
+      instagramUrl: r.instagram_url ?? null,
+      isActive: r.is_active !== false,
+    };
     await this.cache.invalidateCatalogAndAdmin();
     return out;
   }
@@ -806,13 +855,24 @@ export class AdminCatalogController {
 
   @Post('branches')
   @UseGuards(...GUARDS)
-  createBranch(@Body() dto: { name: string; address?: string; wazeLink?: string }) {
+  createBranch(@Body() dto: { name: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string }) {
     return this.service.createBranch(dto);
   }
 
   @Patch('branches/:id')
   @UseGuards(...GUARDS)
-  updateBranch(@Param('id') id: string, @Body() dto: { name?: string; address?: string; wazeLink?: string; isActive?: boolean }) {
+  updateBranch(
+    @Param('id') id: string,
+    @Body()
+    dto: {
+      name?: string;
+      address?: string;
+      wazeLink?: string;
+      phone?: string;
+      instagramUrl?: string;
+      isActive?: boolean;
+    },
+  ) {
     return this.service.updateBranch(id, dto);
   }
 
