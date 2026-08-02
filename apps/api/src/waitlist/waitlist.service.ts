@@ -8,6 +8,7 @@ import {
   dayOfWeekForYmd,
   addDaysToYmd,
   formatIsraelDateLabel,
+  israelDateTimeToEpochMs,
 } from '../core/israel-time';
 
 /** Local day-part windows (minutes from midnight, [start, end)). */
@@ -93,10 +94,18 @@ export class WaitlistService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  /** Same availability logic as GET /bookings/slots — returns count of bookable slots. */
-  private async countAvailableSlots(staffId: string, dateStr: string, serviceId: string): Promise<{ count: number; isNotWorkDay: boolean }> {
+  /** Same availability logic as GET /bookings/slots — returns count of bookable slots.
+   * `branchId` is checked (branch must exist and be active) only when provided — some legacy
+   * call sites (e.g. `notifyWorkingHoursExpanded` scanning old waitlist rows) may not have one on
+   * hand, and skipping the check there preserves today's behavior rather than guessing. */
+  private async countAvailableSlots(
+    staffId: string,
+    dateStr: string,
+    serviceId: string,
+    branchId?: string | null,
+  ): Promise<{ count: number; isNotWorkDay: boolean }> {
     const client = this.supabase.getClient();
-    const [serviceRes, staffServiceRes, branchStaffRes, staffRes] = await Promise.all([
+    const [serviceRes, staffServiceRes, branchStaffRes, staffRes, branchRes] = await Promise.all([
       client.from('services').select('id, is_active').eq('id', serviceId).maybeSingle(),
       client
         .from('staff_service')
@@ -106,6 +115,9 @@ export class WaitlistService {
         .maybeSingle(),
       client.from('branch_staff').select('staff_id').eq('staff_id', staffId).limit(1).maybeSingle(),
       client.from('staff').select('is_active').eq('id', staffId).maybeSingle(),
+      branchId
+        ? client.from('branches').select('id, is_active').eq('id', branchId).maybeSingle()
+        : Promise.resolve({ data: null } as { data: { id: string; is_active?: boolean } | null }),
     ]);
 
     if (!serviceRes.data || (serviceRes.data as { is_active?: boolean }).is_active === false) {
@@ -114,6 +126,10 @@ export class WaitlistService {
     if (!staffServiceRes.data || !branchStaffRes.data) return { count: 0, isNotWorkDay: true };
     const s = staffRes.data as { is_active?: boolean } | null;
     if (s?.is_active === false) return { count: 0, isNotWorkDay: true };
+    if (branchId) {
+      const br = branchRes.data as { is_active?: boolean } | null;
+      if (!br || br.is_active === false) return { count: 0, isNotWorkDay: true };
+    }
 
     const duration = Math.max(5, Math.min(180, (staffServiceRes.data as { duration: number }).duration || 40));
 
@@ -185,10 +201,16 @@ export class WaitlistService {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
-  /** Bookable slot start times (HH:MM) — same grid as `countAvailableSlots`. */
-  private async listBookableSlotStarts(staffId: string, dateStr: string, serviceId: string): Promise<string[]> {
+  /** Bookable slot start times (HH:MM) — same grid as `countAvailableSlots`. `branchId` optional,
+   * same reasoning as `countAvailableSlots`. */
+  private async listBookableSlotStarts(
+    staffId: string,
+    dateStr: string,
+    serviceId: string,
+    branchId?: string | null,
+  ): Promise<string[]> {
     const client = this.supabase.getClient();
-    const [serviceRes, staffServiceRes, branchStaffRes, staffRes] = await Promise.all([
+    const [serviceRes, staffServiceRes, branchStaffRes, staffRes, branchRes] = await Promise.all([
       client.from('services').select('id, is_active').eq('id', serviceId).maybeSingle(),
       client
         .from('staff_service')
@@ -198,6 +220,9 @@ export class WaitlistService {
         .maybeSingle(),
       client.from('branch_staff').select('staff_id').eq('staff_id', staffId).limit(1).maybeSingle(),
       client.from('staff').select('is_active').eq('id', staffId).maybeSingle(),
+      branchId
+        ? client.from('branches').select('id, is_active').eq('id', branchId).maybeSingle()
+        : Promise.resolve({ data: null } as { data: { id: string; is_active?: boolean } | null }),
     ]);
 
     if (!serviceRes.data || (serviceRes.data as { is_active?: boolean }).is_active === false) {
@@ -206,6 +231,10 @@ export class WaitlistService {
     if (!staffServiceRes.data || !branchStaffRes.data) return [];
     const s = staffRes.data as { is_active?: boolean } | null;
     if (s?.is_active === false) return [];
+    if (branchId) {
+      const br = branchRes.data as { is_active?: boolean } | null;
+      if (!br || br.is_active === false) return [];
+    }
 
     const duration = Math.max(5, Math.min(180, (staffServiceRes.data as { duration: number }).duration || 40));
 
@@ -327,7 +356,8 @@ export class WaitlistService {
         const phone = normalizePhone(String(r.client_phone || ''));
         if (!phone) continue;
         const serviceId = r.service_id as string;
-        const slots = await this.listBookableSlotStarts(staffId, dateStr, serviceId);
+        const branchId = (r.branch_id as string | null) ?? null;
+        const slots = await this.listBookableSlotStarts(staffId, dateStr, serviceId, branchId);
         if (!slots.length) continue;
 
         const pm = !!r.prefer_morning;
@@ -461,7 +491,7 @@ export class WaitlistService {
       throw new BadRequestException('לא ניתן להצטרף לרשימת המתנה ליום שכבר עבר');
     }
 
-    const { count, isNotWorkDay } = await this.countAvailableSlots(dto.staffId, dto.date, dto.serviceId);
+    const { count, isNotWorkDay } = await this.countAvailableSlots(dto.staffId, dto.date, dto.serviceId, dto.branchId);
     if (isNotWorkDay) {
       throw new BadRequestException('לא ניתן להצטרף לרשימת המתנה ליום שאינו יום עבודה');
     }
@@ -600,14 +630,20 @@ export class WaitlistService {
         ? client.from('staff').select('id, name').in('id', staffIds)
         : Promise.resolve({ data: [] as { id: string; name: string }[] }),
       serviceIds.length
-        ? client.from('services').select('id, name').in('id', serviceIds)
-        : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-      branchIds.length ? client.from('branches').select('id, name').in('id', branchIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+        ? client.from('services').select('id, name, name_he, name_ar').in('id', serviceIds)
+        : Promise.resolve({ data: [] as { id: string; name: string; name_he: string; name_ar: string }[] }),
+      branchIds.length
+        ? client.from('branches').select('id, name, name_he, name_ar').in('id', branchIds)
+        : Promise.resolve({ data: [] as { id: string; name: string; name_he: string; name_ar: string }[] }),
     ]);
 
     const staffMap = Object.fromEntries((staffRes.data || []).map((s: { id: string; name: string }) => [s.id, s.name]));
     const svcMap = Object.fromEntries((svcRes.data || []).map((s: { id: string; name: string }) => [s.id, s.name]));
+    const svcHeMap = Object.fromEntries((svcRes.data || []).map((s: { id: string; name_he: string }) => [s.id, s.name_he]));
+    const svcArMap = Object.fromEntries((svcRes.data || []).map((s: { id: string; name_ar: string }) => [s.id, s.name_ar]));
     const brMap = Object.fromEntries((brRes.data || []).map((b: { id: string; name: string }) => [b.id, b.name]));
+    const brHeMap = Object.fromEntries((brRes.data || []).map((b: { id: string; name_he: string }) => [b.id, b.name_he]));
+    const brArMap = Object.fromEntries((brRes.data || []).map((b: { id: string; name_ar: string }) => [b.id, b.name_ar]));
 
     return rows.map((r: Record<string, unknown>) => ({
       id: r.id as string,
@@ -620,6 +656,10 @@ export class WaitlistService {
       staffName: staffMap[r.staff_id as string] ?? '',
       serviceName: svcMap[r.service_id as string] ?? '',
       branchName: r.branch_id ? brMap[r.branch_id as string] ?? '' : '',
+      serviceNameHe: svcHeMap[r.service_id as string] ?? svcMap[r.service_id as string] ?? '',
+      serviceNameAr: svcArMap[r.service_id as string] ?? svcMap[r.service_id as string] ?? '',
+      branchNameHe: r.branch_id ? brHeMap[r.branch_id as string] ?? brMap[r.branch_id as string] ?? '' : '',
+      branchNameAr: r.branch_id ? brArMap[r.branch_id as string] ?? brMap[r.branch_id as string] ?? '' : '',
     }));
   }
 
@@ -735,7 +775,7 @@ export class WaitlistService {
     const stale: typeof pending = [];
     for (const o of pending) {
       const timeStr = String(o.time).slice(0, 5);
-      const slotStart = new Date(`${o.date}T${timeStr}:00`).getTime();
+      const slotStart = israelDateTimeToEpochMs(o.date, timeStr);
       if (Number.isNaN(slotStart) || slotStart >= now) continue;
       stale.push(o);
     }
@@ -853,13 +893,21 @@ export class WaitlistService {
 
     const [staffRes, svcRes, brRes] = await Promise.all([
       staffIds.length ? client.from('staff').select('id, name').in('id', staffIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-      serviceIds.length ? client.from('services').select('id, name').in('id', serviceIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-      branchIds.length ? client.from('branches').select('id, name').in('id', branchIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      serviceIds.length
+        ? client.from('services').select('id, name, name_he, name_ar').in('id', serviceIds)
+        : Promise.resolve({ data: [] as { id: string; name: string; name_he: string; name_ar: string }[] }),
+      branchIds.length
+        ? client.from('branches').select('id, name, name_he, name_ar').in('id', branchIds)
+        : Promise.resolve({ data: [] as { id: string; name: string; name_he: string; name_ar: string }[] }),
     ]);
 
     const staffMap = Object.fromEntries((staffRes.data || []).map((s: { id: string; name: string }) => [s.id, s.name]));
     const svcMap = Object.fromEntries((svcRes.data || []).map((s: { id: string; name: string }) => [s.id, s.name]));
+    const svcHeMap = Object.fromEntries((svcRes.data || []).map((s: { id: string; name_he: string }) => [s.id, s.name_he]));
+    const svcArMap = Object.fromEntries((svcRes.data || []).map((s: { id: string; name_ar: string }) => [s.id, s.name_ar]));
     const brMap = Object.fromEntries((brRes.data || []).map((b: { id: string; name: string }) => [b.id, b.name]));
+    const brHeMap = Object.fromEntries((brRes.data || []).map((b: { id: string; name_he: string }) => [b.id, b.name_he]));
+    const brArMap = Object.fromEntries((brRes.data || []).map((b: { id: string; name_ar: string }) => [b.id, b.name_ar]));
 
     return rows.map((r: Record<string, unknown>) => ({
       id: r.id as string,
@@ -871,6 +919,10 @@ export class WaitlistService {
       serviceName: svcMap[r.service_id as string] ?? '',
       branchId: r.branch_id as string | null,
       branchName: r.branch_id ? brMap[r.branch_id as string] ?? '' : '',
+      serviceNameHe: svcHeMap[r.service_id as string] ?? svcMap[r.service_id as string] ?? '',
+      serviceNameAr: svcArMap[r.service_id as string] ?? svcMap[r.service_id as string] ?? '',
+      branchNameHe: r.branch_id ? brHeMap[r.branch_id as string] ?? brMap[r.branch_id as string] ?? '' : '',
+      branchNameAr: r.branch_id ? brArMap[r.branch_id as string] ?? brMap[r.branch_id as string] ?? '' : '',
       createdAt: r.created_at as string,
     }));
   }

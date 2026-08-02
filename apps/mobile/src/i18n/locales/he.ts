@@ -538,6 +538,8 @@ export const he = {
     fullNamePh: 'שם מלא',
     phoneStaffPh: 'טלפון (להתחברות כעובד)',
     namePh: 'שם',
+    nameHePh: 'שם בעברית',
+    nameArPh: 'שם בערבית',
     priceShekelPh: 'מחיר ₪',
     minutesPh: 'דקות',
     addressPh: 'כתובת',

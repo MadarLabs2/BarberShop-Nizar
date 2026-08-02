@@ -62,13 +62,23 @@ function releasedProfilePhoneValue(): string {
 type BranchRow = {
   id: string;
   name: string;
+  name_he: string;
+  name_ar: string;
   address: string | null;
   waze_link: string | null;
   phone: string | null;
   instagram_url: string | null;
   is_active: boolean;
 };
-type ServiceRow = { id: string; name: string; price: number; duration: number; is_active: boolean };
+type ServiceRow = {
+  id: string;
+  name: string;
+  name_he: string;
+  name_ar: string;
+  price: number;
+  duration: number;
+  is_active: boolean;
+};
 type StaffRow = {
   id: string;
   name: string;
@@ -107,19 +117,24 @@ export class AdminCatalogService {
     branches: {
       id: string;
       name: string;
+      nameHe: string;
+      nameAr: string;
       address: string | null;
       wazeLink: string | null;
       phone: string | null;
       instagramUrl: string | null;
       isActive: boolean;
     }[];
-    services: { id: string; name: string; price: number; duration: number; isActive: boolean }[];
+    services: { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number; isActive: boolean }[];
     staff: AdminStaffDto[];
   }> {
     const client = this.supabase.getClient();
     const [{ data: branches }, { data: services }, { data: staff }] = await Promise.all([
-      client.from('branches').select('id, name, address, waze_link, phone, instagram_url, is_active').order('name'),
-      client.from('services').select('id, name, price, duration, is_active').order('name'),
+      client
+        .from('branches')
+        .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url, is_active')
+        .order('name'),
+      client.from('services').select('id, name, name_he, name_ar, price, duration, is_active').order('name'),
       client.from('staff').select('id, name, phone, avatar_url, is_active, profile_id, can_block_own_time, can_set_own_working_hours').order('name'),
     ]);
 
@@ -127,6 +142,8 @@ export class AdminCatalogService {
       branches: (branches || []).map((r: BranchRow) => ({
         id: r.id,
         name: r.name,
+        nameHe: r.name_he,
+        nameAr: r.name_ar,
         address: r.address ?? null,
         wazeLink: r.waze_link ?? null,
         phone: r.phone ?? null,
@@ -136,6 +153,8 @@ export class AdminCatalogService {
       services: (services || []).map((r: ServiceRow) => ({
         id: r.id,
         name: r.name,
+        nameHe: r.name_he,
+        nameAr: r.name_ar,
         price: r.price,
         duration: r.duration,
         isActive: r.is_active !== false,
@@ -157,37 +176,49 @@ export class AdminCatalogService {
     branches: {
       id: string;
       name: string;
+      nameHe: string;
+      nameAr: string;
       address: string | null;
       wazeLink: string | null;
       phone: string | null;
       instagramUrl: string | null;
       isActive: boolean;
     }[];
-    services: { id: string; name: string; price: number; duration: number; isActive: boolean }[];
+    services: { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number; isActive: boolean }[];
     staff: AdminStaffDto[];
   }> {
     return this.cache.getOrSet(CACHE_KEY_ADMIN_CATALOG, TTL_ADMIN_CATALOG, () => this.fetchCatalogAll());
   }
 
-  async createBranch(dto: { name: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string }) {
-    if (!dto.name?.trim()) throw new BadRequestException('Name required');
+  async createBranch(dto: { nameHe: string; nameAr: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string }) {
+    const nameHe = dto.nameHe?.trim();
+    const nameAr = dto.nameAr?.trim();
+    if (!nameHe) throw new BadRequestException('Hebrew name required');
+    if (!nameAr) throw new BadRequestException('Arabic name required');
     const { data, error } = await this.supabase
       .getClient()
       .from('branches')
       .insert({
-        name: dto.name.trim(),
+        // `name` is a server-maintained mirror of name_he — kept for other read paths
+        // (booking-time appointment snapshot, waitlist notifications, reports) that are not
+        // being changed here. Never settable directly by the client.
+        name: nameHe,
+        name_he: nameHe,
+        name_ar: nameAr,
         address: dto.address?.trim() || null,
         waze_link: dto.wazeLink?.trim() || null,
         phone: dto.phone?.trim() || null,
         instagram_url: dto.instagramUrl?.trim() || null,
       })
-      .select('id, name, address, waze_link, phone, instagram_url, is_active')
+      .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url, is_active')
       .single();
     if (error) throw new BadRequestException(error.message);
     const r = data as BranchRow;
     const out = {
       id: r.id,
       name: r.name,
+      nameHe: r.name_he,
+      nameAr: r.name_ar,
       address: r.address ?? null,
       wazeLink: r.waze_link ?? null,
       phone: r.phone ?? null,
@@ -200,10 +231,20 @@ export class AdminCatalogService {
 
   async updateBranch(
     id: string,
-    dto: { name?: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string; isActive?: boolean },
+    dto: { nameHe?: string; nameAr?: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string; isActive?: boolean },
   ) {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (dto.name !== undefined) updates.name = dto.name.trim();
+    if (dto.nameHe !== undefined) {
+      const nameHe = dto.nameHe.trim();
+      if (!nameHe) throw new BadRequestException('Hebrew name required');
+      updates.name_he = nameHe;
+      updates.name = nameHe; // keep the legacy mirror in sync
+    }
+    if (dto.nameAr !== undefined) {
+      const nameAr = dto.nameAr.trim();
+      if (!nameAr) throw new BadRequestException('Arabic name required');
+      updates.name_ar = nameAr;
+    }
     if (dto.address !== undefined) updates.address = dto.address?.trim() || null;
     if (dto.wazeLink !== undefined) updates.waze_link = dto.wazeLink?.trim() || null;
     if (dto.phone !== undefined) updates.phone = dto.phone?.trim() || null;
@@ -214,13 +255,15 @@ export class AdminCatalogService {
       .from('branches')
       .update(updates)
       .eq('id', id)
-      .select('id, name, address, waze_link, phone, instagram_url, is_active')
+      .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url, is_active')
       .single();
     if (error) throw new BadRequestException(error.message);
     const r = data as BranchRow;
     const out = {
       id: r.id,
       name: r.name,
+      nameHe: r.name_he,
+      nameAr: r.name_ar,
       address: r.address ?? null,
       wazeLink: r.waze_link ?? null,
       phone: r.phone ?? null,
@@ -231,27 +274,48 @@ export class AdminCatalogService {
     return out;
   }
 
-  async createService(dto: { name: string; price: number; duration: number }) {
-    if (!dto.name?.trim()) throw new BadRequestException('Name required');
+  async createService(dto: { nameHe: string; nameAr: string; price: number; duration: number }) {
+    const nameHe = dto.nameHe?.trim();
+    const nameAr = dto.nameAr?.trim();
+    if (!nameHe) throw new BadRequestException('Hebrew name required');
+    if (!nameAr) throw new BadRequestException('Arabic name required');
     const price = Math.max(0, Math.floor(Number(dto.price) || 0));
     const duration = Math.max(5, Math.min(180, Math.floor(Number(dto.duration) || 40)));
     const { data, error } = await this.supabase
       .getClient()
       .from('services')
-      .insert({ name: dto.name.trim(), price, duration })
-      .select('id, name, price, duration, is_active')
+      .insert({ name: nameHe, name_he: nameHe, name_ar: nameAr, price, duration })
+      .select('id, name, name_he, name_ar, price, duration, is_active')
       .single();
     if (error) throw new BadRequestException(error.message);
     const r = data as ServiceRow;
-    const out = { id: r.id, name: r.name, price: r.price, duration: r.duration, isActive: r.is_active !== false };
+    const out = {
+      id: r.id,
+      name: r.name,
+      nameHe: r.name_he,
+      nameAr: r.name_ar,
+      price: r.price,
+      duration: r.duration,
+      isActive: r.is_active !== false,
+    };
     await this.cache.invalidateCatalogAndAdmin();
     await this.cache.invalidateAllBookingsSlots();
     return out;
   }
 
-  async updateService(id: string, dto: { name?: string; price?: number; duration?: number; isActive?: boolean }) {
+  async updateService(id: string, dto: { nameHe?: string; nameAr?: string; price?: number; duration?: number; isActive?: boolean }) {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (dto.name !== undefined) updates.name = dto.name.trim();
+    if (dto.nameHe !== undefined) {
+      const nameHe = dto.nameHe.trim();
+      if (!nameHe) throw new BadRequestException('Hebrew name required');
+      updates.name_he = nameHe;
+      updates.name = nameHe; // keep the legacy mirror in sync
+    }
+    if (dto.nameAr !== undefined) {
+      const nameAr = dto.nameAr.trim();
+      if (!nameAr) throw new BadRequestException('Arabic name required');
+      updates.name_ar = nameAr;
+    }
     if (dto.price !== undefined) updates.price = Math.max(0, Math.floor(Number(dto.price)));
     if (dto.duration !== undefined) updates.duration = Math.max(5, Math.min(180, Math.floor(Number(dto.duration))));
     if (dto.isActive !== undefined) updates.is_active = !!dto.isActive;
@@ -260,11 +324,19 @@ export class AdminCatalogService {
       .from('services')
       .update(updates)
       .eq('id', id)
-      .select('id, name, price, duration, is_active')
+      .select('id, name, name_he, name_ar, price, duration, is_active')
       .single();
     if (error) throw new BadRequestException(error.message);
     const r = data as ServiceRow;
-    const out = { id: r.id, name: r.name, price: r.price, duration: r.duration, isActive: r.is_active !== false };
+    const out = {
+      id: r.id,
+      name: r.name,
+      nameHe: r.name_he,
+      nameAr: r.name_ar,
+      price: r.price,
+      duration: r.duration,
+      isActive: r.is_active !== false,
+    };
     await this.cache.invalidateCatalogAndAdmin();
     await this.cache.invalidateAllBookingsSlots();
     return out;
@@ -855,7 +927,7 @@ export class AdminCatalogController {
 
   @Post('branches')
   @UseGuards(...GUARDS)
-  createBranch(@Body() dto: { name: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string }) {
+  createBranch(@Body() dto: { nameHe: string; nameAr: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string }) {
     return this.service.createBranch(dto);
   }
 
@@ -865,7 +937,8 @@ export class AdminCatalogController {
     @Param('id') id: string,
     @Body()
     dto: {
-      name?: string;
+      nameHe?: string;
+      nameAr?: string;
       address?: string;
       wazeLink?: string;
       phone?: string;
@@ -878,13 +951,16 @@ export class AdminCatalogController {
 
   @Post('services')
   @UseGuards(...GUARDS)
-  createService(@Body() dto: { name: string; price: number; duration: number }) {
+  createService(@Body() dto: { nameHe: string; nameAr: string; price: number; duration: number }) {
     return this.service.createService(dto);
   }
 
   @Patch('services/:id')
   @UseGuards(...GUARDS)
-  updateService(@Param('id') id: string, @Body() dto: { name?: string; price?: number; duration?: number; isActive?: boolean }) {
+  updateService(
+    @Param('id') id: string,
+    @Body() dto: { nameHe?: string; nameAr?: string; price?: number; duration?: number; isActive?: boolean },
+  ) {
     return this.service.updateService(id, dto);
   }
 

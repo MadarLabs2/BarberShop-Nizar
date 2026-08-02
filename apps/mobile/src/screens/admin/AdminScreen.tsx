@@ -142,6 +142,7 @@ export function AdminScreen() {
   const staffNameInputRef = useRef<TextInput>(null);
   const staffPhoneInputRef = useRef<TextInput>(null);
   const nameInputRef = useRef<TextInput>(null);
+  const nameArInputRef = useRef<TextInput>(null);
   const priceInputRef = useRef<TextInput>(null);
   const durationInputRef = useRef<TextInput>(null);
   const addressInputRef = useRef<TextInput>(null);
@@ -313,10 +314,23 @@ export function AdminScreen() {
       isStaffModal && admin.editItem && 'avatarUrl' in admin.editItem ? (admin.editItem as Staff) : null;
     const isEditingMyStaffProfile = !!user?.id && !!editedStaff?.profileId && editedStaff.profileId === user.id;
 
-    const nameResult = validateName(admin.form.name);
-    if (!nameResult.valid) {
-      Alert.alert(t('admin.error'), nameResult.error);
-      return;
+    if (isStaffModal) {
+      const nameResult = validateName(admin.form.name);
+      if (!nameResult.valid) {
+        Alert.alert(t('admin.error'), nameResult.error);
+        return;
+      }
+    } else {
+      const nameHeResult = validateName(admin.form.nameHe, t('admin.nameHePh'));
+      if (!nameHeResult.valid) {
+        Alert.alert(t('admin.error'), nameHeResult.error);
+        return;
+      }
+      const nameArResult = validateName(admin.form.nameAr, t('admin.nameArPh'));
+      if (!nameArResult.valid) {
+        Alert.alert(t('admin.error'), nameArResult.error);
+        return;
+      }
     }
     if (isStaffModal) {
       const phone = admin.form.phone.trim();
@@ -601,7 +615,8 @@ export function AdminScreen() {
                     activeOpacity={0.7}
                   >
                     <View style={styles.serviceCardHeaderContent}>
-                      <Text style={styles.serviceCardTitle}>{s.name}</Text>
+                      <Text style={styles.serviceCardTitle}>{s.nameHe}</Text>
+                      <Text style={styles.serviceCardMeta}>{s.nameAr}</Text>
                       <Text style={[styles.serviceCardMeta, styles.serviceStaffSummary]}>
                         {staffCount > 0 ? t('admin.staffLinkedCount', { count: staffCount }) : t('admin.staffLinkedNone')}
                       </Text>
@@ -612,7 +627,7 @@ export function AdminScreen() {
                       onPress={() => admin.openEdit(s)}
                       disabled={admin.deletingItemId === s.id}
                       accessibilityRole="button"
-                      accessibilityLabel={`${t('admin.modalServiceEdit')}: ${s.name}`}
+                      accessibilityLabel={`${t('admin.modalServiceEdit')}: ${s.nameHe}`}
                     >
                       <Ionicons name="create-outline" size={iconSize.lg} color={colors.accent} />
                     </TouchableOpacity>
@@ -621,7 +636,7 @@ export function AdminScreen() {
                       style={styles.deleteBtn}
                       disabled={!!admin.deletingItemId}
                       accessibilityRole="button"
-                      accessibilityLabel={`${t('admin.delete')}: ${s.name}`}
+                      accessibilityLabel={`${t('admin.delete')}: ${s.nameHe}`}
                       accessibilityState={{ disabled: !!admin.deletingItemId, busy: admin.deletingItemId === s.id }}
                     >
                       {admin.deletingItemId === s.id ? (
@@ -917,7 +932,8 @@ export function AdminScreen() {
                     activeOpacity={0.7}
                   >
                     <View style={styles.serviceCardHeaderContent}>
-                      <Text style={styles.serviceCardTitle}>{b.name}</Text>
+                      <Text style={styles.serviceCardTitle}>{b.nameHe}</Text>
+                      <Text style={styles.serviceCardMeta}>{b.nameAr}</Text>
                       {b.address ? <Text style={styles.serviceCardMeta}>{b.address}</Text> : null}
                       <Text style={[styles.serviceCardMeta, styles.branchStaffLine]}>
                         {staffCount > 0 ? t('admin.branchStaffCount', { count: staffCount }) : t('admin.branchStaffNone')}
@@ -929,7 +945,7 @@ export function AdminScreen() {
                       onPress={() => admin.openEdit(b)}
                       disabled={admin.deletingItemId === b.id}
                       accessibilityRole="button"
-                      accessibilityLabel={`${t('admin.modalBranchEdit')}: ${b.name}`}
+                      accessibilityLabel={`${t('admin.modalBranchEdit')}: ${b.nameHe}`}
                     >
                       <Ionicons name="create-outline" size={iconSize.lg} color={colors.accent} />
                     </TouchableOpacity>
@@ -938,7 +954,7 @@ export function AdminScreen() {
                       style={styles.deleteBtn}
                       disabled={!!admin.deletingItemId}
                       accessibilityRole="button"
-                      accessibilityLabel={`${t('admin.delete')}: ${b.name}`}
+                      accessibilityLabel={`${t('admin.delete')}: ${b.nameHe}`}
                       accessibilityState={{ disabled: !!admin.deletingItemId, busy: admin.deletingItemId === b.id }}
                     >
                       {admin.deletingItemId === b.id ? (
@@ -1124,23 +1140,38 @@ export function AdminScreen() {
                 </View>
               )}
               {!isStaffModal && (
-                <TextInput
-                  ref={nameInputRef}
-                  style={[adminFormStyles.input, focusedField === 'name' && adminFormStyles.inputFocused]}
-                  placeholder={t('admin.namePh')}
-                  value={admin.form.name}
-                  onChangeText={(tx) => admin.setForm((f) => ({ ...f, name: tx }))}
-                  placeholderTextColor={colors.textMuted}
-                  onFocus={() => setFocusedField('name')}
-                  onBlur={() => setFocusedField(null)}
-                  returnKeyType={admin.activeTab === 'services' ? 'next' : admin.activeTab === 'branches' ? 'next' : 'done'}
-                  blurOnSubmit={admin.activeTab !== 'services' && admin.activeTab !== 'branches'}
-                  onSubmitEditing={() => {
-                    if (admin.activeTab === 'services') priceInputRef.current?.focus();
-                    else if (admin.activeTab === 'branches') addressInputRef.current?.focus();
-                    else Keyboard.dismiss();
-                  }}
-                />
+                <>
+                  <TextInput
+                    ref={nameInputRef}
+                    style={[adminFormStyles.input, focusedField === 'nameHe' && adminFormStyles.inputFocused]}
+                    placeholder={t('admin.nameHePh')}
+                    value={admin.form.nameHe}
+                    onChangeText={(tx) => admin.setForm((f) => ({ ...f, nameHe: tx }))}
+                    placeholderTextColor={colors.textMuted}
+                    onFocus={() => setFocusedField('nameHe')}
+                    onBlur={() => setFocusedField(null)}
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onSubmitEditing={() => nameArInputRef.current?.focus()}
+                  />
+                  <TextInput
+                    ref={nameArInputRef}
+                    style={[adminFormStyles.input, focusedField === 'nameAr' && adminFormStyles.inputFocused]}
+                    placeholder={t('admin.nameArPh')}
+                    value={admin.form.nameAr}
+                    onChangeText={(tx) => admin.setForm((f) => ({ ...f, nameAr: tx }))}
+                    placeholderTextColor={colors.textMuted}
+                    onFocus={() => setFocusedField('nameAr')}
+                    onBlur={() => setFocusedField(null)}
+                    returnKeyType={admin.activeTab === 'services' ? 'next' : admin.activeTab === 'branches' ? 'next' : 'done'}
+                    blurOnSubmit={admin.activeTab !== 'services' && admin.activeTab !== 'branches'}
+                    onSubmitEditing={() => {
+                      if (admin.activeTab === 'services') priceInputRef.current?.focus();
+                      else if (admin.activeTab === 'branches') addressInputRef.current?.focus();
+                      else Keyboard.dismiss();
+                    }}
+                  />
+                </>
               )}
               {admin.activeTab === 'services' && (
                 <View style={adminFormStyles.inlineRow}>
@@ -1249,7 +1280,10 @@ export function AdminScreen() {
                   title={t('admin.save')}
                   variant="primary"
                   onPress={handleSave}
-                  disabled={!admin.form.name.trim() || admin.saving}
+                  disabled={
+                    (isStaffModal ? !admin.form.name.trim() : !admin.form.nameHe.trim() || !admin.form.nameAr.trim()) ||
+                    admin.saving
+                  }
                   loading={admin.saving}
                 />
               </View>

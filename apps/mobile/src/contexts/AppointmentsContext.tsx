@@ -8,6 +8,7 @@ import {
   peekCustomerAppointments,
 } from '../services/customerPrefetchCache';
 import { filterCustomerPastAppointmentsForDisplay } from '../utils/customerAppointmentsDisplay';
+import { isAppointmentUpcoming } from '../utils/dates';
 import { getAuthState, subscribeAuth } from '../store/auth.store';
 
 /** Exported for screens that need the same staleness window as `refresh` (e.g. focus sync). */
@@ -79,7 +80,7 @@ async function loadAppointmentsDisk(
       return null;
     }
     return {
-      upcoming: dedupeUpcomingById(parsed.upcoming),
+      upcoming: sanitizeUpcoming(parsed.upcoming),
       past: filterCustomerPastAppointmentsForDisplay(parsed.past),
       at: parsed.at,
     };
@@ -124,6 +125,26 @@ function dedupeUpcomingById(rows: AppointmentDto[]): AppointmentDto[] {
   return out;
 }
 
+/**
+ * Same as `dedupeUpcomingById`, plus drops any row whose start time has already passed. Only for
+ * data read back from a cache (disk across app restarts, or the in-memory prefetch peek) — that
+ * data was correct when it was written, but time keeps moving after that, and neither cache
+ * self-corrects until the next network fetch lands. Without this, an appointment can sit in
+ * `upcoming` and render on Home/Appointments as still-upcoming long after it actually ended.
+ * Freshly server-fetched data doesn't need this — the API already applies the same cutoff.
+ */
+function sanitizeUpcoming(rows: AppointmentDto[]): AppointmentDto[] {
+  const seen = new Set<string>();
+  const out: AppointmentDto[] = [];
+  for (const r of rows) {
+    if (seen.has(r.id)) continue;
+    if (!isAppointmentUpcoming(r.date, r.time)) continue;
+    seen.add(r.id);
+    out.push(r);
+  }
+  return out;
+}
+
 export function AppointmentsProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppointmentsState>(defaultState);
   const fetchVersionRef = useRef(0);
@@ -141,7 +162,7 @@ export function AppointmentsProvider({ children }: { children: React.ReactNode }
       const peeked = peekCustomerAppointments();
       if (peeked && (peeked.upcoming.length > 0 || peeked.past.length > 0)) {
         setState({
-          upcoming: dedupeUpcomingById(peeked.upcoming),
+          upcoming: sanitizeUpcoming(peeked.upcoming),
           past: filterCustomerPastAppointmentsForDisplay(peeked.past),
           loading: false,
           refreshing: false,
@@ -176,7 +197,7 @@ export function AppointmentsProvider({ children }: { children: React.ReactNode }
       if (!token) return;
       const peeked = peekCustomerAppointments();
       if (!peeked) return;
-      const upcoming = dedupeUpcomingById(peeked.upcoming);
+      const upcoming = sanitizeUpcoming(peeked.upcoming);
       const past = filterCustomerPastAppointmentsForDisplay(peeked.past);
       setState({
         upcoming,
@@ -214,7 +235,7 @@ export function AppointmentsProvider({ children }: { children: React.ReactNode }
     if (!effectiveHasLoaded && effectiveUpcoming.length === 0 && effectivePast.length === 0) {
       const peeked = peekCustomerAppointments();
       if (peeked) {
-        effectiveUpcoming = dedupeUpcomingById(peeked.upcoming);
+        effectiveUpcoming = sanitizeUpcoming(peeked.upcoming);
         effectivePast = filterCustomerPastAppointmentsForDisplay(peeked.past);
         effectiveLastFetched = Date.now();
         effectiveHasLoaded = true;

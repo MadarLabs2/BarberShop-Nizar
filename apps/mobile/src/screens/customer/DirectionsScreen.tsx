@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Linking, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { View, Text, StyleSheet, ScrollView, Linking, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/ui/Screen';
@@ -11,31 +10,14 @@ import { PageIntro } from '../../components/ui/PageIntro';
 import { AppButton } from '../../components/ui/AppButton';
 import { openDrawer } from '../../utils/nav';
 import { BARBERSHOP_MAP_QUERY, BARBERSHOP_PHONE_INTL } from '../../lib/config';
-import { fetchBranches, type Branch } from '../../services/bookings.api';
-import { peekBookingBranches } from '../../services/customerPrefetchCache';
+import { useShopBranch } from '../../hooks/useShopBranch';
 import { colors, spacing, radius, presets, textStyles, shadows, iconSize, layout } from '../../theme';
 
 export function DirectionsScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<{ navigate: (name: string) => void; openDrawer?: () => void }>();
   /** Admin-editable shop info (address/phone) — first active branch, kept in sync via customer prefetch cache. */
-  const [shopBranch, setShopBranch] = useState<Branch | null>(() => peekBookingBranches()?.[0] ?? null);
-
-  useEffect(() => {
-    if (shopBranch) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const list = peekBookingBranches() ?? (await fetchBranches());
-        if (!cancelled && list.length > 0) setShopBranch(list[0]);
-      } catch {
-        // Keep hardcoded fallback contact info if the branches fetch fails.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [shopBranch]);
+  const shopBranch = useShopBranch();
 
   const openWaze = () => {
     if (shopBranch?.wazeLink) {

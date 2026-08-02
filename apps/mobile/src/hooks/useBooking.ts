@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Alert } from 'react-native';
+import { Alert, DeviceEventEmitter } from 'react-native';
+import {
+  BOOKING_SLOTS_INVALIDATED_EVENT,
+  type BookingSlotsInvalidatedPayload,
+} from '../lib/bookingSlotsInvalidation';
 import { useAppointments } from '../contexts/AppointmentsContext';
 import { useNotifications } from '../contexts/NotificationsContext';
 import type { AppointmentDto } from '../services/bookings.api';
@@ -29,6 +33,10 @@ import {
   syncCustomerPrefetchToken,
   setStaffBookingContext,
   patchStaffBookingContextsFromTeamList,
+  CATALOG_BRANCH_UPDATED_EVENT,
+  CATALOG_SERVICE_UPDATED_EVENT,
+  type CatalogBranchUpdatedPayload,
+  type CatalogServiceUpdatedPayload,
 } from '../services/customerPrefetchCache';
 import i18n from '../i18n';
 import {
@@ -49,6 +57,8 @@ function buildStaffBookingContextFromSummary(member: CatalogStaffMember): StaffB
     branches: s.branches.map((b) => ({
       id: b.id,
       name: b.name,
+      nameHe: b.nameHe,
+      nameAr: b.nameAr,
       address: b.address ?? null,
       wazeLink: b.wazeLink ?? null,
       phone: b.phone ?? null,
@@ -58,6 +68,8 @@ function buildStaffBookingContextFromSummary(member: CatalogStaffMember): StaffB
     services: s.services.map((svc) => ({
       id: svc.id,
       name: svc.name,
+      nameHe: svc.nameHe,
+      nameAr: svc.nameAr,
       price: svc.price,
       duration: svc.duration,
     })),
@@ -193,7 +205,7 @@ export function useBooking(_token: string | null) {
   const [appointmentLimitChecked, setAppointmentLimitChecked] = useState(false);
 
   const slotsFetchGenRef = useRef(0);
-  const slotsCacheRef = useRef(new Map<string, { slots: string[]; isNotWorkDay: boolean }>());
+  const slotsCacheRef = useRef(new Map<string, { slots: string[]; isNotWorkDay: boolean; fetchedAt: number }>());
   const slotsInflightRef = useRef(new Map<string, Promise<{ slots: string[]; isNotWorkDay: boolean }>>());
   const bookingInFlightRef = useRef(false);
   const staffFetchGenRef = useRef(0);
@@ -446,6 +458,8 @@ export function useBooking(_token: string | null) {
         setService({
           id: svcRow.id,
           name: svcRow.name,
+          nameHe: svcRow.nameHe,
+          nameAr: svcRow.nameAr,
           price: svcRow.price,
           duration: svcRow.duration,
         });
@@ -521,19 +535,30 @@ export function useBooking(_token: string | null) {
   }, [selectedDate]);
 
   const SLOT_CACHE_MAX = 32;
+  /** Slot availability is the most volatile data in the app — a short TTL bounds how long a
+   * cached "available" answer can survive after someone else takes (or frees) that slot, on top
+   * of the explicit invalidation on booking failure / cross-screen cancellation below. */
+  const SLOT_CACHE_TTL_MS = 20_000;
+
+  const buildSlotsCacheKey = useCallback(
+    (req: { staffId: string; branchId: string; date: string; serviceId: string }) =>
+      `${req.staffId}|${req.branchId}|${req.date}|${req.serviceId}|${editingAppointmentId ?? ''}`,
+    [editingAppointmentId]
+  );
 
   const loadSlotsPayload = useCallback(
     (
-      req: { staffId: string; date: string; serviceId: string },
+      req: { staffId: string; branchId: string; date: string; serviceId: string },
       options?: { skipCache?: boolean }
     ): Promise<{ slots: string[]; isNotWorkDay: boolean }> => {
-      const cacheKey = `${req.staffId}|${req.date}|${req.serviceId}|${editingAppointmentId ?? ''}`;
+      const cacheKey = buildSlotsCacheKey(req);
       const cache = slotsCacheRef.current;
       const inflight = slotsInflightRef.current;
 
       if (!options?.skipCache) {
         const hit = cache.get(cacheKey);
-        if (hit) return Promise.resolve(hit);
+        if (hit && Date.now() - hit.fetchedAt < SLOT_CACHE_TTL_MS) return Promise.resolve(hit);
+        if (hit) cache.delete(cacheKey);
       } else {
         inflight.delete(cacheKey);
         cache.delete(cacheKey);
@@ -549,7 +574,7 @@ export function useBooking(_token: string | null) {
         excludeAppointmentId: editingAppointmentId ?? undefined,
       })
         .then(({ slots: s, isNotWorkDay }) => {
-          const payload = { slots: s, isNotWorkDay: !!isNotWorkDay };
+          const payload = { slots: s, isNotWorkDay: !!isNotWorkDay, fetchedAt: Date.now() };
           cache.set(cacheKey, payload);
           if (cache.size > SLOT_CACHE_MAX) {
             const first = cache.keys().next().value as string | undefined;
@@ -564,22 +589,23 @@ export function useBooking(_token: string | null) {
       inflight.set(cacheKey, p);
       return p;
     },
-    [editingAppointmentId]
+    [editingAppointmentId, buildSlotsCacheKey]
   );
 
   const primeSlotsForDate = useCallback(
     (date: Date) => {
-      if (!staffMember?.id || !service?.id) return;
+      if (!branch?.id || !staffMember?.id || !service?.id) return;
       const wd = staffMember.workingDays?.map((w) => w.dayOfWeek) ?? [];
       if (!wd.length || !wd.includes(date.getDay())) return;
       const dateStr = toDateString(date);
       void loadSlotsPayload({
         staffId: staffMember.id,
+        branchId: branch.id,
         date: dateStr,
         serviceId: service.id,
       }).catch(() => undefined);
     },
-    [staffMember?.id, service?.id, staffMember?.workingDays, loadSlotsPayload]
+    [branch?.id, staffMember?.id, service?.id, staffMember?.workingDays, loadSlotsPayload]
   );
 
   useEffect(() => {
@@ -590,20 +616,21 @@ export function useBooking(_token: string | null) {
 
   const fetchSlots = useCallback(
     async (options?: { skipCache?: boolean }) => {
-      if (!staffMember?.id || !service?.id || !selectedDate) return;
+      if (!branch?.id || !staffMember?.id || !service?.id || !selectedDate) return;
       const req = {
         staffId: staffMember.id,
+        branchId: branch.id,
         date: toDateString(selectedDate),
         serviceId: service.id,
       };
-      const cacheKey = `${req.staffId}|${req.date}|${req.serviceId}`;
+      const cacheKey = buildSlotsCacheKey(req);
       const cache = slotsCacheRef.current;
 
       const gen = ++slotsFetchGenRef.current;
 
       if (!options?.skipCache) {
         const hit = cache.get(cacheKey);
-        if (hit) {
+        if (hit && Date.now() - hit.fetchedAt < SLOT_CACHE_TTL_MS) {
           setSlots(hit.slots);
           setSlotsNotWorkDay(hit.isNotWorkDay);
           setSlotsLoading(false);
@@ -629,8 +656,90 @@ export function useBooking(_token: string | null) {
         }
       }
     },
-    [staffMember?.id, service?.id, selectedDate, loadSlotsPayload]
+    [branch?.id, staffMember?.id, service?.id, selectedDate, loadSlotsPayload, buildSlotsCacheKey]
   );
+
+  /** Cancelling an appointment on the Appointments screen frees a slot this (possibly still
+   * mounted) Booking screen's cache doesn't know about — drop any cached entries for that
+   * staff+date (or everything, if the emitter didn't have staff/date on hand) instead of waiting
+   * out the TTL, and refetch immediately if that's what's currently on screen. */
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      BOOKING_SLOTS_INVALIDATED_EVENT,
+      (payload: BookingSlotsInvalidatedPayload) => {
+        const cache = slotsCacheRef.current;
+        const inflight = slotsInflightRef.current;
+        if (!payload) {
+          cache.clear();
+          inflight.clear();
+        } else {
+          for (const key of Array.from(cache.keys())) {
+            const [keyStaffId, , keyDate] = key.split('|');
+            if (keyStaffId === payload.staffId && keyDate === payload.date) cache.delete(key);
+          }
+        }
+        if (
+          staffMember?.id &&
+          service?.id &&
+          selectedDate &&
+          (!payload || (payload.staffId === staffMember.id && payload.date === toDateString(selectedDate)))
+        ) {
+          void fetchSlots({ skipCache: true });
+        }
+      }
+    );
+    return () => sub.remove();
+  }, [staffMember?.id, service?.id, selectedDate, fetchSlots]);
+
+  /** Admin edits a branch elsewhere (name, address, ...) — patch it into this screen's currently
+   * loaded branch list/selection in place, without waiting for the next fetch. */
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      CATALOG_BRANCH_UPDATED_EVENT,
+      (payload: CatalogBranchUpdatedPayload) => {
+        if ('branch' in payload) {
+          const b = payload.branch;
+          setBranches((list) => (list.some((x) => x.id === b.id) ? list.map((x) => (x.id === b.id ? b : x)) : list));
+          setBranch((prev) => (prev && prev.id === b.id ? b : prev));
+        } else {
+          const removedId = payload.removedBranchId;
+          setBranches((list) => list.filter((x) => x.id !== removedId));
+          setBranch((prev) => (prev && prev.id === removedId ? null : prev));
+        }
+      }
+    );
+    return () => sub.remove();
+  }, []);
+
+  /** Same as above for a service's name fields (price/duration are per-staff and untouched by this). */
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      CATALOG_SERVICE_UPDATED_EVENT,
+      (payload: CatalogServiceUpdatedPayload) => {
+        if ('service' in payload) {
+          const s = payload.service;
+          setStaffMember((prev) => {
+            if (!prev?.services?.some((x) => x.id === s.id)) return prev;
+            return {
+              ...prev,
+              services: prev.services.map((x) =>
+                x.id === s.id ? { ...x, name: s.name, nameHe: s.nameHe, nameAr: s.nameAr } : x
+              ),
+            };
+          });
+          setService((prev) => (prev && prev.id === s.id ? { ...prev, name: s.name, nameHe: s.nameHe, nameAr: s.nameAr } : prev));
+        } else {
+          const removedId = payload.removedServiceId;
+          setStaffMember((prev) => {
+            if (!prev?.services?.some((x) => x.id === removedId)) return prev;
+            return { ...prev, services: prev.services.filter((x) => x.id !== removedId) };
+          });
+          setService((prev) => (prev && prev.id === removedId ? null : prev));
+        }
+      }
+    );
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (!staffMember || !service || !selectedDate) {
@@ -663,7 +772,7 @@ export function useBooking(_token: string | null) {
   }, [selectedDate, staffMember]);
 
   const { upcoming, updateUpcoming, bumpLastFetched, forceRefresh: refreshAppointments } = useAppointments();
-  const { addLocalNotification, removeNotificationById } = useNotifications();
+  const { addLocalNotification } = useNotifications();
 
   /**
    * Fail closed: the 2-future-appointments limit must never be judged against a stale/empty
@@ -789,6 +898,8 @@ export function useBooking(_token: string | null) {
         setService({
           id: svcRow.id,
           name: svcRow.name,
+          nameHe: svcRow.nameHe,
+          nameAr: svcRow.nameAr,
           price: svcRow.price,
           duration: svcRow.duration,
         });
@@ -857,6 +968,10 @@ export function useBooking(_token: string | null) {
             serviceName: created.serviceName,
             staffName: created.staffName,
             branchName: created.branchName,
+            serviceNameHe: created.serviceNameHe,
+            serviceNameAr: created.serviceNameAr,
+            branchNameHe: created.branchNameHe,
+            branchNameAr: created.branchNameAr,
             price: created.price,
             status: 'confirmed',
             createdAt: created.createdAt,
@@ -882,6 +997,9 @@ export function useBooking(_token: string | null) {
           return { success: true };
         } catch (e) {
           const msg = e instanceof Error ? e.message : 'לא הצלחנו לקבוע את התור';
+          // The backend just rejected this slot (or something else about it changed) — never
+          // keep showing it as available; drop the cached entry and pull the real current list.
+          void fetchSlots({ skipCache: true });
           return { success: false, error: msg };
         } finally {
           bookingInFlightRef.current = false;
@@ -903,60 +1021,62 @@ export function useBooking(_token: string | null) {
 
       if (editingAppointmentId) {
         const aptId = editingAppointmentId;
-        const localEditNotifId = addLocalNotification({
-          title: i18n.t('booking.successUpdated'),
-          body: `${service.name} - ${dateStr} ${selectedTime}`,
-          type: 'appointment',
-          token: authToken,
-        });
         bookingInFlightRef.current = true;
-        setShowConfirmModal(false);
-        void updateAppointment(
-          aptId,
-          {
-            branchId: branch.id,
-            staffId: staffMember.id,
-            serviceId: service.id,
-            date: dateStr,
-            time: selectedTime,
-          },
-          authToken
-        )
-          .then((updated) => {
-            const dto: AppointmentDto = {
-              id: updated.id,
-              date: updated.date,
-              time: updated.time,
-              serviceName: updated.serviceName,
-              staffName: updated.staffName,
-              branchName: updated.branchName,
-              price: updated.price,
-              status: 'confirmed',
-              createdAt: updated.createdAt,
-              staffId: staffMember.id,
+        setSubmitting(true);
+        try {
+          const updated = await updateAppointment(
+            aptId,
+            {
               branchId: branch.id,
+              staffId: staffMember.id,
               serviceId: service.id,
-            };
-            updateUpcoming((prev) => prev.map((a) => (a.id === aptId ? dto : a)));
-            bumpLastFetched();
-            setEditingAppointmentId(null);
-            setSelectedDate(null);
-            setSelectedTime(null);
-            slotsCacheRef.current.clear();
-            slotsInflightRef.current.clear();
-            slotsFetchGenRef.current += 1;
-          })
-          .catch((e) => {
-            removeNotificationById(localEditNotifId, authToken);
-            const msg = e instanceof Error ? e.message : 'לא הצלחנו לעדכן את התור';
-            queueMicrotask(() => {
-              Alert.alert('שגיאה', msg);
-            });
-          })
-          .finally(() => {
-            bookingInFlightRef.current = false;
+              date: dateStr,
+              time: selectedTime,
+            },
+            authToken
+          );
+          const dto: AppointmentDto = {
+            id: updated.id,
+            date: updated.date,
+            time: updated.time,
+            serviceName: updated.serviceName,
+            staffName: updated.staffName,
+            branchName: updated.branchName,
+            serviceNameHe: updated.serviceNameHe,
+            serviceNameAr: updated.serviceNameAr,
+            branchNameHe: updated.branchNameHe,
+            branchNameAr: updated.branchNameAr,
+            price: updated.price,
+            status: 'confirmed',
+            createdAt: updated.createdAt,
+            staffId: staffMember.id,
+            branchId: branch.id,
+            serviceId: service.id,
+          };
+          updateUpcoming((prev) => prev.map((a) => (a.id === aptId ? dto : a)));
+          addLocalNotification({
+            title: i18n.t('booking.successUpdated'),
+            body: `${service.name} - ${dateStr} ${selectedTime}`,
+            type: 'appointment',
+            token: authToken,
           });
-        return { success: true };
+          bumpLastFetched();
+          slotsCacheRef.current.clear();
+          slotsInflightRef.current.clear();
+          slotsFetchGenRef.current += 1;
+          setShowConfirmModal(false);
+          setEditingAppointmentId(null);
+          setSelectedDate(null);
+          setSelectedTime(null);
+          return { success: true };
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'לא הצלחנו לעדכן את התור';
+          void fetchSlots({ skipCache: true });
+          return { success: false, error: msg };
+        } finally {
+          bookingInFlightRef.current = false;
+          setSubmitting(false);
+        }
       }
 
       bookingInFlightRef.current = true;
@@ -979,6 +1099,10 @@ export function useBooking(_token: string | null) {
           serviceName: created.serviceName,
           staffName: created.staffName,
           branchName: created.branchName,
+          serviceNameHe: created.serviceNameHe,
+          serviceNameAr: created.serviceNameAr,
+          branchNameHe: created.branchNameHe,
+          branchNameAr: created.branchNameAr,
           price: created.price,
           status: 'confirmed',
           createdAt: created.createdAt,
@@ -1003,6 +1127,7 @@ export function useBooking(_token: string | null) {
         return { success: true };
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'לא הצלחנו לקבוע את התור';
+        void fetchSlots({ skipCache: true });
         return { success: false, error: msg };
       } finally {
         bookingInFlightRef.current = false;
@@ -1019,10 +1144,10 @@ export function useBooking(_token: string | null) {
       updateUpcoming,
       bumpLastFetched,
       addLocalNotification,
-      removeNotificationById,
       editingAppointmentId,
       futureUpcomingCount,
       pendingWaitlistOfferId,
+      fetchSlots,
     ]
   );
 
@@ -1080,7 +1205,12 @@ export function useBooking(_token: string | null) {
           preferAfternoon: prefs.preferAfternoon,
           preferEvening: prefs.preferEvening,
         });
-        const cacheKey = `${staffMember.id}|${dateStr}|${service.id}`;
+        const cacheKey = buildSlotsCacheKey({
+          staffId: staffMember.id,
+          branchId: branch.id,
+          date: dateStr,
+          serviceId: service.id,
+        });
         slotsCacheRef.current.delete(cacheKey);
         slotsInflightRef.current.delete(cacheKey);
         const entry: MyWaitlistEntry = {
@@ -1094,6 +1224,10 @@ export function useBooking(_token: string | null) {
           staffName: staffMember.name,
           serviceName: service.name,
           branchName: branch.name ?? '',
+          serviceNameHe: service.nameHe,
+          serviceNameAr: service.nameAr,
+          branchNameHe: branch.nameHe ?? '',
+          branchNameAr: branch.nameAr ?? '',
         };
         notifyWaitlistJoined(entry);
         return { success: true, entry };
@@ -1103,7 +1237,7 @@ export function useBooking(_token: string | null) {
         setWaitlistSubmitting(false);
       }
     },
-    [branch, staffMember, service, selectedDate, editingAppointmentId, futureUpcomingCount]
+    [branch, staffMember, service, selectedDate, editingAppointmentId, futureUpcomingCount, buildSlotsCacheKey]
   );
 
   const servicesForStaff: Service[] = staffMember?.services ?? [];

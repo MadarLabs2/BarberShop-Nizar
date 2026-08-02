@@ -21,6 +21,18 @@ import { prefetchImageUrlOnce } from './homeStoriesCache';
 /** Fired when customer `/bookings/my` prefetch writes cache — Appointments tab can `refresh` without waiting on the slowest bundle request. */
 export const CUSTOMER_APPOINTMENTS_CACHE_WARMED = 'customerAppointmentsCacheWarmed';
 
+/** Fired right after an admin branch create/edit/delete patches the caches below, so an
+ * already-mounted screen (e.g. Booking with this branch selected) can update in place instead of
+ * waiting for the next fetch. `removedBranchId` covers delete. */
+export const CATALOG_BRANCH_UPDATED_EVENT = 'catalogBranchUpdated';
+export type CatalogBranchUpdatedPayload = { branch: Branch } | { removedBranchId: string };
+
+/** Same as above for services. Only name fields are carried — price/duration are per-staff
+ * (`staff_service`) overrides and must never be clobbered by a base-service edit. */
+export const CATALOG_SERVICE_UPDATED_EVENT = 'catalogServiceUpdated';
+export type CatalogServiceName = { id: string; name: string; nameHe: string; nameAr: string };
+export type CatalogServiceUpdatedPayload = { service: CatalogServiceName } | { removedServiceId: string };
+
 const SECTION_TTL_MS = 60_000;
 const BUNDLE_COALESCE_MS = 60_000;
 const STAFF_CONTEXT_TTL_MS = 5 * 60_000;
@@ -145,10 +157,18 @@ async function restoreCustomerAppointmentsCache(token?: string | null): Promise<
     ) {
       return;
     }
+    // Keep the real fetch time, not `Date.now()`. Faking freshness here made `isFresh()` (60s TTL)
+    // report this restored-from-disk snapshot as "just confirmed with the server" no matter how
+    // old it actually was, which then poisoned AppointmentsContext's own staleness check on hydrate
+    // and silently blocked Home's one-shot background refresh from ever hitting the network —
+    // an already-ended appointment (or a missing new one) could sit displayed for a full session
+    // until the user happened to visit the Appointments tab, whose focus-retry eventually forced a
+    // real refetch. Preserving the true timestamp lets a genuinely-old cache correctly report
+    // itself as stale so the normal refresh path corrects it right away.
     customerAppointmentsCache = {
       upcoming: parsed.upcoming,
       past: filterCustomerPastAppointmentsForDisplay(parsed.past),
-      at: Date.now(),
+      at: parsed.at,
     };
   } catch {
     /* ignore cache restore failures */
@@ -458,6 +478,145 @@ export function peekBookingBranches(): Branch[] | null {
 
 function setBookingBranchesCache(list: Branch[]): void {
   bookingBranchesCache = { list, at: Date.now() };
+}
+
+/** Patch one staff member's `bookingSummary` (branches or services) in the team cache, if present. */
+function patchTeamBookingSummaries(
+  patch: (m: CatalogStaffMember) => CatalogStaffMember | null,
+): void {
+  if (!teamStaffCache) return;
+  let changed = false;
+  const next = teamStaffCache.list.map((m) => {
+    const patched = patch(m);
+    if (patched === null) return m;
+    changed = true;
+    return patched;
+  });
+  if (!changed) return;
+  teamStaffCache = { list: next, at: teamStaffCache.at };
+  void persistTeamStaffCache();
+  emitTeamStaff(next);
+}
+
+/**
+ * Merge one branch into every customer-facing cache — the shop-info list, every cached staff
+ * booking context, and team `bookingSummary` rows — so an admin edit (name, address, phone, …)
+ * shows up immediately everywhere instead of waiting out the 60s/5min TTLs. Also used for create
+ * (appends if not already cached).
+ */
+export function upsertBranchInCaches(branch: Branch): void {
+  if (bookingBranchesCache) {
+    const idx = bookingBranchesCache.list.findIndex((b) => b.id === branch.id);
+    const next =
+      idx >= 0
+        ? bookingBranchesCache.list.map((b) => (b.id === branch.id ? branch : b))
+        : [...bookingBranchesCache.list, branch];
+    bookingBranchesCache = { list: next, at: Date.now() };
+  }
+
+  for (const [staffId, hit] of staffBookingContextCache.entries()) {
+    if (!isStaffContextFresh(hit.at)) continue;
+    if (!hit.ctx.branches.some((b) => b.id === branch.id)) continue;
+    setStaffBookingContext(staffId, {
+      ...hit.ctx,
+      branches: hit.ctx.branches.map((b) => (b.id === branch.id ? branch : b)),
+    });
+  }
+
+  patchTeamBookingSummaries((m) => {
+    if (!m.bookingSummary?.branches.some((b) => b.id === branch.id)) return null;
+    return {
+      ...m,
+      bookingSummary: {
+        ...m.bookingSummary,
+        branches: m.bookingSummary.branches.map((b) => (b.id === branch.id ? branch : b)),
+      },
+    };
+  });
+
+  DeviceEventEmitter.emit(CATALOG_BRANCH_UPDATED_EVENT, { branch } satisfies CatalogBranchUpdatedPayload);
+}
+
+/** Remove a deleted branch from every customer-facing cache immediately. */
+export function removeBranchFromCaches(branchId: string): void {
+  if (bookingBranchesCache) {
+    bookingBranchesCache = {
+      list: bookingBranchesCache.list.filter((b) => b.id !== branchId),
+      at: Date.now(),
+    };
+  }
+
+  for (const [staffId, hit] of staffBookingContextCache.entries()) {
+    if (!hit.ctx.branches.some((b) => b.id === branchId)) continue;
+    setStaffBookingContext(staffId, {
+      ...hit.ctx,
+      branches: hit.ctx.branches.filter((b) => b.id !== branchId),
+    });
+  }
+
+  patchTeamBookingSummaries((m) => {
+    if (!m.bookingSummary?.branches.some((b) => b.id === branchId)) return null;
+    return {
+      ...m,
+      bookingSummary: { ...m.bookingSummary, branches: m.bookingSummary.branches.filter((b) => b.id !== branchId) },
+    };
+  });
+
+  DeviceEventEmitter.emit(CATALOG_BRANCH_UPDATED_EVENT, { removedBranchId: branchId } satisfies CatalogBranchUpdatedPayload);
+}
+
+/**
+ * Sync only the name fields for a service into cached staff booking contexts + team
+ * `bookingSummary` rows. Price/duration intentionally excluded — those come from the per-staff
+ * `staff_service` link, not the base service row, and must not be overwritten by this.
+ */
+export function patchServiceNameInCaches(service: CatalogServiceName): void {
+  for (const [staffId, hit] of staffBookingContextCache.entries()) {
+    if (!isStaffContextFresh(hit.at)) continue;
+    if (!hit.ctx.services.some((s) => s.id === service.id)) continue;
+    setStaffBookingContext(staffId, {
+      ...hit.ctx,
+      services: hit.ctx.services.map((s) =>
+        s.id === service.id ? { ...s, name: service.name, nameHe: service.nameHe, nameAr: service.nameAr } : s,
+      ),
+    });
+  }
+
+  patchTeamBookingSummaries((m) => {
+    if (!m.bookingSummary?.services.some((s) => s.id === service.id)) return null;
+    return {
+      ...m,
+      bookingSummary: {
+        ...m.bookingSummary,
+        services: m.bookingSummary.services.map((s) =>
+          s.id === service.id ? { ...s, name: service.name, nameHe: service.nameHe, nameAr: service.nameAr } : s,
+        ),
+      },
+    };
+  });
+
+  DeviceEventEmitter.emit(CATALOG_SERVICE_UPDATED_EVENT, { service } satisfies CatalogServiceUpdatedPayload);
+}
+
+/** Remove a deleted service from every cached staff booking context + team `bookingSummary` row. */
+export function removeServiceFromCaches(serviceId: string): void {
+  for (const [staffId, hit] of staffBookingContextCache.entries()) {
+    if (!hit.ctx.services.some((s) => s.id === serviceId)) continue;
+    setStaffBookingContext(staffId, {
+      ...hit.ctx,
+      services: hit.ctx.services.filter((s) => s.id !== serviceId),
+    });
+  }
+
+  patchTeamBookingSummaries((m) => {
+    if (!m.bookingSummary?.services.some((s) => s.id === serviceId)) return null;
+    return {
+      ...m,
+      bookingSummary: { ...m.bookingSummary, services: m.bookingSummary.services.filter((s) => s.id !== serviceId) },
+    };
+  });
+
+  DeviceEventEmitter.emit(CATALOG_SERVICE_UPDATED_EVENT, { removedServiceId: serviceId } satisfies CatalogServiceUpdatedPayload);
 }
 
 export function peekCustomerWaitlist(): MyWaitlistEntry[] | null {

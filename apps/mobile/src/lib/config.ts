@@ -1,5 +1,5 @@
 /** Customer-facing app name (header, drawer, about). */
-export const BRAND_NAME = 'NizarBarberShop';
+export const BRAND_NAME = 'NezarBarberShop';
 export const MADARLABS_INSTAGRAM_USERNAME = 'madarlabs';
 export const MADARLABS_INSTAGRAM_URL = `https://instagram.com/${MADARLABS_INSTAGRAM_USERNAME}`;
 export const MADARLABS_CONTACT_PHONE = '0529338598';

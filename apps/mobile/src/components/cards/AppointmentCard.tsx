@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import type { AppointmentDto } from '../../services/bookings.api';
 import { formatAppointmentDate } from '../../utils/dates';
-import { localizeCatalogString, useAppLocale } from '../../contexts/LocaleContext';
+import { pickLocalizedName, useAppLocale } from '../../contexts/LocaleContext';
 import { colors, spacing, textStyles, presets, radius, iconSize, layout, shadows } from '../../theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -58,8 +58,8 @@ export function AppointmentCard({
 }: AppointmentCardProps) {
   const { t } = useTranslation();
   const { locale, localeTag } = useAppLocale();
-  const serviceDisplay = localizeCatalogString(item.serviceName, locale);
-  const branchDisplay = localizeCatalogString(item.branchName, locale);
+  const serviceDisplay = pickLocalizedName({ nameHe: item.serviceNameHe, nameAr: item.serviceNameAr }, locale);
+  const branchDisplay = pickLocalizedName({ nameHe: item.branchNameHe, nameAr: item.branchNameAr }, locale);
   const formattedDate = formatAppointmentDate(item.date, item.time, localeTag);
 
   const handleCancel = () => {

@@ -291,7 +291,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     let cancelled = false;
     void (async () => {
       const pref = peekCustomerNotificationsBundle();
-      if (pref && pref.items.length > 0) {
+      // A present-but-empty cache (`items: []`) is still a real, correct answer — treat it as
+      // loaded so a genuinely-empty inbox renders immediately instead of showing a loading spinner
+      // while waiting for a network fetch to confirm what the cache already knows.
+      if (pref) {
         if (cancelled) return;
         setState((s) => ({
           ...s,

@@ -48,14 +48,34 @@ export function israelNowMinutesSinceMidnight(): number {
 
 /**
  * Israel's UTC offset (minutes) at the given absolute instant — handles DST automatically.
- * Formats the same instant both as UTC and as Israel wall-clock, then re-parses both strings the
- * same way (as device-local); the device's own timezone cancels out of the subtraction either way.
+ * Reads Israel's wall-clock date/time for this instant via `formatToParts` (no string→Date
+ * re-parsing, unlike an earlier version of this function that round-tripped through
+ * `toLocaleString` + `new Date(string)` — a shape `Date.parse` isn't guaranteed to understand on
+ * every JS engine, notably Hermes, the engine this app actually runs on), then compares that
+ * wall-clock reading — treated as if it were itself a UTC timestamp — against the real instant.
+ * Deterministic on any spec-compliant engine, so the device's own timezone can't affect it.
  */
 function israelOffsetMinutesAt(instantMs: number): number {
-  const d = new Date(instantMs);
-  const asUtc = new Date(d.toLocaleString('en-US', { timeZone: 'UTC' })).getTime();
-  const asIsrael = new Date(d.toLocaleString('en-US', { timeZone: ISRAEL_TZ })).getTime();
-  return Math.round((asIsrael - asUtc) / 60000);
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: ISRAEL_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(instantMs));
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? '0');
+  const asIsraelWallClockUtcMs = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    get('hour'),
+    get('minute'),
+    get('second'),
+  );
+  return Math.round((asIsraelWallClockUtcMs - instantMs) / 60000);
 }
 
 /**

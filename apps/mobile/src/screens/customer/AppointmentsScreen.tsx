@@ -21,6 +21,7 @@ import {
   type MyWaitlistEntry,
 } from '../../services/bookings.api';
 import { drainWaitlistJoinQueue, mergeWaitlistEntries } from '../../lib/waitlistJoinQueue';
+import { emitBookingSlotsInvalidated } from '../../lib/bookingSlotsInvalidation';
 import {
   CUSTOMER_APPOINTMENTS_CACHE_WARMED,
   peekCustomerWaitlist,
@@ -31,7 +32,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useAppointments } from '../../contexts/AppointmentsContext';
 import { useNotifications } from '../../contexts/NotificationsContext';
 import { useBadgeSeen } from '../../contexts/BadgeSeenContext';
-import { localizeCatalogString, useAppLocale } from '../../contexts/LocaleContext';
+import { pickLocalizedName, useAppLocale } from '../../contexts/LocaleContext';
 import { openDrawer } from '../../utils/nav';
 import { formatDateDmy } from '../../utils/dates';
 import { colors, spacing, presets, radius, textStyles, shadows } from '../../theme';
@@ -45,7 +46,6 @@ export function AppointmentsScreen() {
     upcoming,
     past,
     loading,
-    refreshing,
     hasLoadedOnce,
     refresh,
     forceRefresh,
@@ -54,6 +54,12 @@ export function AppointmentsScreen() {
   } = useAppointments();
   const { addLocalNotification, removeNotificationById } = useNotifications();
   const { markAppointmentsSeenFromLists } = useBadgeSeen();
+  /** Drives the ScrollView's pull-to-refresh spinner only — a user-initiated pull gesture.
+   * Deliberately NOT the context's background `refreshing` flag: that flag is shared app-wide
+   * (e.g. Home's background sync sets it too), so binding it here made an unrelated screen's
+   * silent background refetch pop this screen's pull spinner if the user switched tabs mid-fetch —
+   * an unwanted "reload" the user never asked for. Mirrors NotificationsScreen's `pulling`. */
+  const [pulling, setPulling] = useState(false);
   const formatWlPrefs = useCallback(
     (w: MyWaitlistEntry) => {
       const p: string[] = [];
@@ -148,9 +154,14 @@ export function AppointmentsScreen() {
   }, [token, refresh]);
 
   const onRefresh = useCallback(async () => {
-    const result = await forceRefresh(token);
-    if (result) await markAppointmentsSeenFromLists(result.upcoming, result.past);
-    void loadWaitlist();
+    setPulling(true);
+    try {
+      const result = await forceRefresh(token);
+      if (result) await markAppointmentsSeenFromLists(result.upcoming, result.past);
+      void loadWaitlist();
+    } finally {
+      setPulling(false);
+    }
   }, [token, forceRefresh, markAppointmentsSeenFromLists, loadWaitlist]);
 
   const handleEditAppointment = useCallback(
@@ -182,7 +193,7 @@ export function AppointmentsScreen() {
     updateUpcoming((prev) => prev.filter((a) => a.id !== id));
     const localCancelNotifId = addLocalNotification({
       title: t('appointments.cancelledOk'),
-      body: `${localizeCatalogString(removed.serviceName, locale)} - ${removed.date} ${removed.time}`,
+      body: `${pickLocalizedName({ nameHe: removed.serviceNameHe, nameAr: removed.serviceNameAr }, locale)} - ${removed.date} ${removed.time}`,
       type: 'appointment',
       token,
     });
@@ -191,6 +202,9 @@ export function AppointmentsScreen() {
     void (async () => {
       try {
         await cancelAppointment(id, token);
+        // The freed slot may now be shown by a currently-mounted Booking screen for the same
+        // staff/date — its cache doesn't know about this cancellation on its own.
+        emitBookingSlotsInvalidated(removed.staffId ? { staffId: removed.staffId, date: removed.date } : null);
       } catch (e) {
         removeNotificationById(localCancelNotifId, token);
         updateUpcoming((prev) => [...prev, removed].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)));
@@ -283,7 +297,7 @@ export function AppointmentsScreen() {
         />
         <ScrollView
           contentContainerStyle={[presets.scrollContent, styles.scrollContentTop, styles.waitlistHydrateScroll]}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} />}
         >
           <ScreenEnter variant="rise" style={styles.enterGrow}>
             <Animated.View style={[styles.enterGrow, focusEnterStyle]}>
@@ -309,7 +323,7 @@ export function AppointmentsScreen() {
         />
         <ScrollView
           contentContainerStyle={[presets.scrollContent, styles.scrollContentTop, styles.emptyContainer]}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} />}
         >
           <ScreenEnter variant="rise" style={styles.enterGrow}>
             <Animated.View style={[styles.enterGrow, focusEnterStyle]}>
@@ -341,7 +355,7 @@ export function AppointmentsScreen() {
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[presets.scrollContent, styles.scrollContentTop]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} />}
       >
         <ScreenEnter variant="rise" style={styles.enterGrow}>
           <Animated.View style={[styles.enterGrow, focusEnterStyle]}>
@@ -356,7 +370,7 @@ export function AppointmentsScreen() {
                         <Text style={styles.wlDate}>
                           {formatDateDmy(new Date(w.date + 'T12:00:00'))}{' '}
                           ·{' '}
-                          {localizeCatalogString(w.serviceName, locale)}
+                          {pickLocalizedName({ nameHe: w.serviceNameHe, nameAr: w.serviceNameAr }, locale)}
                         </Text>
                         <TouchableOpacity
                           onPress={async () => {
@@ -377,7 +391,7 @@ export function AppointmentsScreen() {
                       </View>
                       <Text style={styles.wlSub}>
                         {w.staffName}
-                        {w.branchName ? ` · ${localizeCatalogString(w.branchName, locale)}` : ''}
+                        {w.branchName ? ` · ${pickLocalizedName({ nameHe: w.branchNameHe, nameAr: w.branchNameAr }, locale)}` : ''}
                       </Text>
                       <Text style={styles.wlPrefs}>{formatWlPrefs(w)}</Text>
                     </View>

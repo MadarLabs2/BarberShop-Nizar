@@ -40,14 +40,14 @@ import { useAppointments } from '../../contexts/AppointmentsContext';
 import {
   acceptWaitlistOffer,
   cancelAppointment,
-  fetchBranches,
   getPendingWaitlistOffers,
 } from '../../services/bookings.api';
 import { prefetchAdminHeavyData } from '../../services/adminPrefetchCache';
 import { prefetchStaffDashboardData } from '../../services/staffPrefetchCache';
-import { prefetchCustomerTabData, peekBookingBranches } from '../../services/customerPrefetchCache';
+import { prefetchCustomerTabData } from '../../services/customerPrefetchCache';
+import { useShopBranch } from '../../hooks/useShopBranch';
 import { useNotifications } from '../../contexts/NotificationsContext';
-import type { AppointmentDto, Branch, CatalogProduct, WaitlistSlotOffer } from '../../services/bookings.api';
+import type { AppointmentDto, CatalogProduct, WaitlistSlotOffer } from '../../services/bookings.api';
 import {
   BRAND_NAME,
   BARBERSHOP_MAP_QUERY,
@@ -72,7 +72,7 @@ import {
 import { HomeStoriesSection } from '../../components/home/HomeStoriesSection';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
-import { localizeCatalogString, useAppLocale } from '../../contexts/LocaleContext';
+import { pickLocalizedName, useAppLocale } from '../../contexts/LocaleContext';
 import { LanguageSwitcher } from '../../components/settings/LanguageSwitcher';
 
 const VIDEO_HEIGHT = 260;
@@ -480,7 +480,7 @@ export function HomeScreen() {
   const [productDetailFor, setProductDetailFor] = useState<CatalogProduct | null>(null);
   const [waitlistOffers, setWaitlistOffers] = useState<WaitlistSlotOffer[]>([]);
   /** Admin-editable shop info (address/phone/email/Instagram) — first active branch, kept in sync via customer prefetch cache. */
-  const [shopBranch, setShopBranch] = useState<Branch | null>(() => peekBookingBranches()?.[0] ?? null);
+  const shopBranch = useShopBranch();
   const lastFocusSyncAtRef = useRef(0);
   const riseY = useSharedValue(14);
   const riseOp = useSharedValue(0);
@@ -531,28 +531,14 @@ export function HomeScreen() {
     // notifications here, and only after animations settle.
     const handle = InteractionManager.runAfterInteractions(() => {
       if (isPureCustomer) {
-        void refresh(token);
+        // Background sync, not a user gesture — must never flip the shared `refreshing` flag that
+        // other screens' pull-to-refresh spinners could be (or become) bound to.
+        void refresh(token, { silent: true });
         void refreshNotifications(token);
       }
     });
     return () => handle.cancel();
   }, [token, isPureCustomer, refresh, refreshNotifications]);
-
-  useEffect(() => {
-    if (shopBranch) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const list = peekBookingBranches() ?? (await fetchBranches());
-        if (!cancelled && list.length > 0) setShopBranch(list[0]);
-      } catch {
-        // Keep hardcoded fallback contact info if the branches fetch fails.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [shopBranch]);
 
   const handleAcceptWaitlistOffer = useCallback(
     async (offer: WaitlistSlotOffer) => {
@@ -565,6 +551,10 @@ export function HomeScreen() {
         serviceName: offer.serviceName,
         staffName: offer.staffName,
         branchName: offer.branchName || '',
+        serviceNameHe: offer.serviceNameHe,
+        serviceNameAr: offer.serviceNameAr,
+        branchNameHe: offer.branchNameHe || '',
+        branchNameAr: offer.branchNameAr || '',
         price: 0,
         status: 'confirmed',
         createdAt: new Date().toISOString(),
@@ -586,6 +576,10 @@ export function HomeScreen() {
           serviceName: created.serviceName,
           staffName: created.staffName,
           branchName: created.branchName,
+          serviceNameHe: created.serviceNameHe,
+          serviceNameAr: created.serviceNameAr,
+          branchNameHe: created.branchNameHe,
+          branchNameAr: created.branchNameAr,
           price: created.price,
           status: 'confirmed',
           createdAt: created.createdAt,
@@ -769,10 +763,10 @@ export function HomeScreen() {
                       <View key={offer.id} style={styles.waitlistOfferCard}>
                         <Text style={styles.waitlistOfferTitle}>{t('home.waitlistSlotTitle')}</Text>
                         <Text style={styles.waitlistOfferBody}>
-                          {localizeCatalogString(offer.serviceName, locale)} · {offer.staffName}
+                          {pickLocalizedName({ nameHe: offer.serviceNameHe, nameAr: offer.serviceNameAr }, locale)} · {offer.staffName}
                           {'\n'}
                           {dateLabel} {t('home.atTime')} {offer.time}
-                          {offer.branchName ? `\n${localizeCatalogString(offer.branchName, locale)}` : ''}
+                          {offer.branchName ? `\n${pickLocalizedName({ nameHe: offer.branchNameHe, nameAr: offer.branchNameAr }, locale)}` : ''}
                         </Text>
                         <Text style={styles.waitlistOfferHint}>{t('home.waitlistSlotHint')}</Text>
                         <TouchableOpacity

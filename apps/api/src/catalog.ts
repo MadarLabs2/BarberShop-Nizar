@@ -12,12 +12,14 @@ import { SupabaseService } from './core/supabase';
 export type BranchDto = {
   id: string;
   name: string;
+  nameHe: string;
+  nameAr: string;
   address: string | null;
   wazeLink: string | null;
   phone: string | null;
   instagramUrl: string | null;
 };
-export type ServiceDto = { id: string; name: string; price: number; duration: number };
+export type ServiceDto = { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number };
 export type StaffDto = {
   id: string;
   name: string;
@@ -43,7 +45,7 @@ export class CatalogService {
     const { data, error } = await this.supabase
       .getClient()
       .from('branches')
-      .select('id, name, address, waze_link, phone, instagram_url')
+      .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url')
       .eq('is_active', true)
       .order('name');
     if (error) return [];
@@ -51,6 +53,8 @@ export class CatalogService {
       (r: {
         id: string;
         name: string;
+        name_he: string;
+        name_ar: string;
         address: string | null;
         waze_link: string | null;
         phone: string | null;
@@ -58,6 +62,8 @@ export class CatalogService {
       }) => ({
         id: r.id,
         name: r.name,
+        nameHe: r.name_he,
+        nameAr: r.name_ar,
         address: r.address ?? null,
         wazeLink: r.waze_link ?? null,
         phone: r.phone ?? null,
@@ -74,16 +80,20 @@ export class CatalogService {
     const { data, error } = await this.supabase
       .getClient()
       .from('services')
-      .select('id, name, price, duration')
+      .select('id, name, name_he, name_ar, price, duration')
       .eq('is_active', true)
       .order('name');
     if (error) return [];
-    return (data || []).map((r: { id: string; name: string; price: number; duration: number }) => ({
-      id: r.id,
-      name: r.name,
-      price: r.price,
-      duration: r.duration,
-    }));
+    return (data || []).map(
+      (r: { id: string; name: string; name_he: string; name_ar: string; price: number; duration: number }) => ({
+        id: r.id,
+        name: r.name,
+        nameHe: r.name_he,
+        nameAr: r.name_ar,
+        price: r.price,
+        duration: r.duration,
+      }),
+    );
   }
 
   async getServices(): Promise<ServiceDto[]> {
@@ -189,7 +199,7 @@ export class CatalogService {
       branchIds.length > 0
         ? await client
             .from('branches')
-            .select('id, name, address, waze_link, phone, instagram_url')
+            .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url')
             .in('id', branchIds)
             .eq('is_active', true)
         : { data: [] };
@@ -199,6 +209,8 @@ export class CatalogService {
         (r: {
           id: string;
           name: string;
+          name_he: string;
+          name_ar: string;
           address: string | null;
           waze_link: string | null;
           phone: string | null;
@@ -208,6 +220,8 @@ export class CatalogService {
           {
             id: r.id,
             name: r.name,
+            nameHe: r.name_he,
+            nameAr: r.name_ar,
             address: r.address ?? null,
             wazeLink: r.waze_link ?? null,
             phone: r.phone ?? null,
@@ -220,13 +234,13 @@ export class CatalogService {
     const serviceIds = [...new Set((staffServiceRows || []).map((r: { service_id: string }) => r.service_id))];
     const { data: servicesRows } =
       serviceIds.length > 0
-        ? await client.from('services').select('id, name').in('id', serviceIds).eq('is_active', true)
+        ? await client.from('services').select('id, name, name_he, name_ar').in('id', serviceIds).eq('is_active', true)
         : { data: [] };
     const activeServiceIds = new Set((servicesRows || []).map((r: { id: string }) => r.id));
-    const serviceNameMap: Record<string, string> = {};
+    const serviceNameMap: Record<string, { name: string; nameHe: string; nameAr: string }> = {};
     for (const r of servicesRows || []) {
-      const row = r as { id: string; name: string };
-      serviceNameMap[row.id] = row.name;
+      const row = r as { id: string; name: string; name_he: string; name_ar: string };
+      serviceNameMap[row.id] = { name: row.name, nameHe: row.name_he, nameAr: row.name_ar };
     }
 
     const staffBranchIds = new Map<string, Set<string>>();
@@ -242,9 +256,12 @@ export class CatalogService {
       const row = r as { staff_id: string; service_id: string; price: number; duration: number };
       if (!activeServiceIds.has(row.service_id)) continue;
       if (!staffServices.has(row.staff_id)) staffServices.set(row.staff_id, []);
+      const svcName = serviceNameMap[row.service_id];
       staffServices.get(row.staff_id)!.push({
         id: row.service_id,
-        name: serviceNameMap[row.service_id] ?? 'טיפול',
+        name: svcName?.name ?? 'טיפול',
+        nameHe: svcName?.nameHe ?? 'טיפול',
+        nameAr: svcName?.nameAr ?? 'علاج',
         price: row.price,
         duration: row.duration,
       });
@@ -292,7 +309,13 @@ export class CatalogService {
   async getStaffForBranch(
     branchId: string,
   ): Promise<
-    { id: string; name: string; avatarUrl: string | null; workingDays: { dayOfWeek: number; startTime: string; endTime: string }[]; services: { id: string; name: string; price: number; duration: number }[] }[]
+    {
+      id: string;
+      name: string;
+      avatarUrl: string | null;
+      workingDays: { dayOfWeek: number; startTime: string; endTime: string }[];
+      services: { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number }[];
+    }[]
   > {
     const { data: links, error } = await this.supabase
       .getClient()
@@ -334,14 +357,14 @@ export class CatalogService {
         ? await this.supabase
             .getClient()
             .from('services')
-            .select('id, name')
+            .select('id, name, name_he, name_ar')
             .in('id', serviceIds)
             .eq('is_active', true)
         : { data: [] };
-    const serviceNameMap: Record<string, string> = {};
+    const serviceNameMap: Record<string, { name: string; nameHe: string; nameAr: string }> = {};
     for (const r of servicesRows || []) {
-      const row = r as { id: string; name: string };
-      serviceNameMap[row.id] = row.name;
+      const row = r as { id: string; name: string; name_he: string; name_ar: string };
+      serviceNameMap[row.id] = { name: row.name, nameHe: row.name_he, nameAr: row.name_ar };
     }
     const workMap: Record<string, { dayOfWeek: number; startTime: string; endTime: string }[]> = {};
     for (const r of workingDaysRows || []) {
@@ -353,13 +376,19 @@ export class CatalogService {
         endTime: this.timeToHHMM(row.end_time),
       });
     }
-    const serviceMap: Record<string, { id: string; name: string; price: number; duration: number }[]> = {};
+    const serviceMap: Record<
+      string,
+      { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number }[]
+    > = {};
     for (const r of staffServiceRows || []) {
       const row = r as { staff_id: string; service_id: string; price: number; duration: number };
       if (!serviceMap[row.staff_id]) serviceMap[row.staff_id] = [];
+      const svcName = serviceNameMap[row.service_id];
       serviceMap[row.staff_id].push({
         id: row.service_id,
-        name: serviceNameMap[row.service_id] ?? 'טיפול',
+        name: svcName?.name ?? 'טיפול',
+        nameHe: svcName?.nameHe ?? 'טיפול',
+        nameAr: svcName?.nameAr ?? 'علاج',
         price: row.price,
         duration: row.duration,
       });
@@ -382,7 +411,7 @@ export class CatalogService {
     staff: { id: string; name: string; avatarUrl: string | null };
     branches: BranchDto[];
     workingDays: { dayOfWeek: number; startTime: string; endTime: string }[];
-    services: { id: string; name: string; price: number; duration: number }[];
+    services: { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number }[];
   } | null> {
     const { data: staffRow, error: staffErr } = await this.supabase
       .getClient()
@@ -409,7 +438,7 @@ export class CatalogService {
       const { data: brRows } = await this.supabase
         .getClient()
         .from('branches')
-        .select('id, name, address, waze_link, phone, instagram_url')
+        .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url')
         .in('id', branchIds)
         .eq('is_active', true)
         .order('name');
@@ -417,6 +446,8 @@ export class CatalogService {
         (r: {
           id: string;
           name: string;
+          name_he: string;
+          name_ar: string;
           address: string | null;
           waze_link: string | null;
           phone: string | null;
@@ -424,6 +455,8 @@ export class CatalogService {
         }) => ({
           id: r.id,
           name: r.name,
+          nameHe: r.name_he,
+          nameAr: r.name_ar,
           address: r.address ?? null,
           wazeLink: r.waze_link ?? null,
           phone: r.phone ?? null,
@@ -456,19 +489,27 @@ export class CatalogService {
     const serviceIds = [...new Set((staffServiceRows || []).map((r: { service_id: string }) => r.service_id))];
     const { data: servicesRows } =
       serviceIds.length > 0
-        ? await this.supabase.getClient().from('services').select('id, name').in('id', serviceIds).eq('is_active', true)
+        ? await this.supabase
+            .getClient()
+            .from('services')
+            .select('id, name, name_he, name_ar')
+            .in('id', serviceIds)
+            .eq('is_active', true)
         : { data: [] };
-    const serviceNameMap: Record<string, string> = {};
+    const serviceNameMap: Record<string, { name: string; nameHe: string; nameAr: string }> = {};
     for (const r of servicesRows || []) {
-      const row = r as { id: string; name: string };
-      serviceNameMap[row.id] = row.name;
+      const row = r as { id: string; name: string; name_he: string; name_ar: string };
+      serviceNameMap[row.id] = { name: row.name, nameHe: row.name_he, nameAr: row.name_ar };
     }
-    const services: { id: string; name: string; price: number; duration: number }[] = [];
+    const services: { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number }[] = [];
     for (const r of staffServiceRows || []) {
       const row = r as { service_id: string; price: number; duration: number };
+      const svcName = serviceNameMap[row.service_id];
       services.push({
         id: row.service_id,
-        name: serviceNameMap[row.service_id] ?? 'טיפול',
+        name: svcName?.name ?? 'טיפול',
+        nameHe: svcName?.nameHe ?? 'טיפול',
+        nameAr: svcName?.nameAr ?? 'علاج',
         price: row.price,
         duration: row.duration,
       });

@@ -9,8 +9,8 @@ export const CACHE_KEY_CATALOG_PRODUCTS = 'catalog:products';
 export const CACHE_KEY_ADMIN_CATALOG = 'admin:catalog';
 export const CACHE_KEY_ADMIN_SUMMARY = 'admin:summary';
 
-export function cacheKeyBookingsSlots(staffId: string, serviceId: string, date: string): string {
-  return `bookings:slots:${staffId}:${serviceId}:${date}`;
+export function cacheKeyBookingsSlots(staffId: string, serviceId: string, date: string, branchId: string): string {
+  return `bookings:slots:${staffId}:${serviceId}:${date}:${branchId}`;
 }
 
 @Injectable()

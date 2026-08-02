@@ -98,7 +98,6 @@ export function NotificationsScreen() {
     items: notifications,
     error,
     deleting,
-    refresh,
     forceRefresh,
     deleteAll,
     hasLoadedOnce,
@@ -131,16 +130,19 @@ export function NotificationsScreen() {
       focusEnter.value = withTiming(1, { duration: 220 });
       void (async () => {
         if (!token) return;
-        // Silent background refetch — never sets a screen-visible loading/refreshing indicator,
-        // so returning to this tab never shows a spinner or reload flash on its own.
-        const items = await refresh(token);
+        // Always hit the server on focus — `refresh()`'s 20s staleness window meant opening this
+        // screen shortly after any other background sync (e.g. Home's on-mount refresh) skipped
+        // the fetch and showed whatever was cached then, missing a notification created in
+        // between. `forceRefresh` bypasses that check; this screen never reads `loading`/
+        // `refreshing` for anything, so it stays silent — no spinner or reload flash.
+        const items = await forceRefresh(token);
         if (cancelled || items === null) return;
         await markSeenRef.current(items);
       })();
       return () => {
         cancelled = true;
       };
-    }, [token, refresh, focusEnter]),
+    }, [token, forceRefresh, focusEnter]),
   );
 
   const onRefresh = useCallback(async () => {

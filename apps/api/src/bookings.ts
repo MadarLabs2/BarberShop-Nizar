@@ -72,6 +72,10 @@ type AppointmentMyListRow = {
   service_name: string | null;
   staff_name: string | null;
   branch_name: string | null;
+  service_name_he: string | null;
+  service_name_ar: string | null;
+  branch_name_he: string | null;
+  branch_name_ar: string | null;
   price: number | null;
   created_at: string;
   updated_at?: string | null;
@@ -79,7 +83,7 @@ type AppointmentMyListRow = {
 };
 
 const APPOINTMENT_MY_SELECT =
-  'id, profile_id, client_phone, date, time, duration, status, service_name, staff_name, branch_name, price, created_at, updated_at, client_hidden_at, staff_id, branch_id, service_id';
+  'id, profile_id, client_phone, date, time, duration, status, service_name, staff_name, branch_name, service_name_he, service_name_ar, branch_name_he, branch_name_ar, price, created_at, updated_at, client_hidden_at, staff_id, branch_id, service_id';
 
 const MY_APPOINTMENTS_CAP_PER_BRANCH = 300;
 
@@ -98,19 +102,20 @@ function normalizePhone(s: string): string {
   return String(s || '').replace(/\D/g, '').slice(-9) || '';
 }
 
-function timeToMins(t: string): number {
+/** Exported for unit testing (see test/bookings.slots.spec.ts) — pure functions, no behavior change. */
+export function timeToMins(t: string): number {
   const s = String(t || '').slice(0, 5);
   const [h, m] = s.split(':').map(Number);
   return (h || 0) * 60 + (m || 0);
 }
 
-function minsToTime(mins: number): string {
+export function minsToTime(mins: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-function overlaps(
+export function overlaps(
   start1: number,
   dur1: number,
   start2: number,
@@ -139,9 +144,18 @@ export class BookingsController {
     staffId: string,
     dateStr: string,
     serviceId: string,
+    branchId: string,
     excludeAppointmentId?: string,
   ): Promise<{ slots: string[]; isNotWorkDay?: boolean }> {
-    const [serviceRes, staffServiceRes, branchStaffRes, staffRes] = await Promise.all([
+    /** Rolling horizon: today .. today+13 (14 calendar days), Israel calendar — same window
+     * POST /bookings enforces, so this endpoint never advertises slots that can't actually be booked. */
+    const todayCal = israelTodayYmd();
+    const maxBookDate = addDaysToYmd(todayCal, 13);
+    if (dateStr < todayCal || dateStr > maxBookDate) {
+      return { slots: [] };
+    }
+
+    const [serviceRes, staffServiceRes, branchStaffRes, staffRes, branchRes] = await Promise.all([
       this.supabase.getClient().from('services').select('id, is_active').eq('id', serviceId).maybeSingle(),
       this.supabase
         .getClient()
@@ -150,20 +164,34 @@ export class BookingsController {
         .eq('staff_id', staffId)
         .eq('service_id', serviceId)
         .maybeSingle(),
-      this.supabase.getClient().from('branch_staff').select('staff_id').eq('staff_id', staffId).limit(1).maybeSingle(),
+      this.supabase
+        .getClient()
+        .from('branch_staff')
+        .select('staff_id')
+        .eq('staff_id', staffId)
+        .eq('branch_id', branchId)
+        .limit(1)
+        .maybeSingle(),
       this.supabase.getClient().from('staff').select('is_active').eq('id', staffId).maybeSingle(),
+      this.supabase.getClient().from('branches').select('id, is_active').eq('id', branchId).maybeSingle(),
     ]);
 
     const service = serviceRes.data;
     if (!service) throw new BadRequestException('Service not found');
     if ((service as { is_active?: boolean }).is_active === false) throw new BadRequestException('Service not available');
 
+    /** Closed/inactive branch must never advertise availability, even if the staff's own
+     * schedule says they'd otherwise be working — matches the same check POST /bookings makes. */
+    const br = branchRes.data as { is_active?: boolean } | null;
+    if (!br) throw new BadRequestException('Branch not found');
+    if (br.is_active === false) throw new BadRequestException('Branch not available');
+
     const staffServiceRow = staffServiceRes.data;
     if (!staffServiceRow) throw new BadRequestException('איש הצוות אינו מספק את הטיפול הזה');
 
     const duration = Math.max(5, Math.min(180, (staffServiceRow as { duration: number }).duration || 40));
 
-    if (!branchStaffRes.data) throw new BadRequestException('Staff not found');
+    if (!branchStaffRes.data) throw new BadRequestException('Staff not assigned to branch');
 
     const s = staffRes.data as { is_active?: boolean } | null;
     if (s?.is_active === false) throw new BadRequestException('Staff not available');
@@ -246,11 +274,12 @@ export class BookingsController {
     @Query('staffId') staffId?: string,
     @Query('date') dateStr?: string,
     @Query('serviceId') serviceId?: string,
+    @Query('branchId') branchId?: string,
     /** When rescheduling, exclude this appointment from conflict checks so the current slot stays selectable. */
     @Query('excludeAppointmentId') excludeAppointmentId?: string,
   ) {
-    if (!staffId || !dateStr || !serviceId) {
-      throw new BadRequestException('staffId, date, and serviceId required');
+    if (!staffId || !dateStr || !serviceId || !branchId) {
+      throw new BadRequestException('staffId, date, serviceId, and branchId required');
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       throw new BadRequestException('Invalid date format (YYYY-MM-DD)');
@@ -258,12 +287,12 @@ export class BookingsController {
 
     const ex = excludeAppointmentId?.trim();
     if (ex) {
-      return this.computeAvailableSlots(staffId, dateStr, serviceId, ex);
+      return this.computeAvailableSlots(staffId, dateStr, serviceId, branchId, ex);
     }
 
-    const key = cacheKeyBookingsSlots(staffId, serviceId, dateStr);
+    const key = cacheKeyBookingsSlots(staffId, serviceId, dateStr, branchId);
     return this.cache.getOrSet(key, TTL_BOOKINGS_SLOTS, () =>
-      this.computeAvailableSlots(staffId, dateStr, serviceId, undefined),
+      this.computeAvailableSlots(staffId, dateStr, serviceId, branchId, undefined),
     );
   }
 
@@ -387,24 +416,25 @@ export class BookingsController {
     const { data: branch } = await this.supabase
       .getClient()
       .from('branches')
-      .select('id, name, is_active')
+      .select('id, name, name_he, name_ar, is_active')
       .eq('id', branchId)
       .maybeSingle();
 
     if (!branch) throw new BadRequestException('Branch not found');
-    if ((branch as { is_active?: boolean }).is_active === false) {
+    const br = branch as { name: string; name_he: string; name_ar: string; is_active?: boolean };
+    if (br.is_active === false) {
       throw new BadRequestException('Branch not available');
     }
 
     const { data: service } = await this.supabase
       .getClient()
       .from('services')
-      .select('id, name, is_active')
+      .select('id, name, name_he, name_ar, is_active')
       .eq('id', serviceId)
       .maybeSingle();
 
     if (!service) throw new BadRequestException('Service not found');
-    const svcBase = service as { name: string; is_active?: boolean };
+    const svcBase = service as { name: string; name_he: string; name_ar: string; is_active?: boolean };
     if (svcBase.is_active === false) throw new BadRequestException('Service not available');
 
     const { data: staffServiceRow } = await this.supabase
@@ -417,7 +447,7 @@ export class BookingsController {
 
     if (!staffServiceRow) throw new BadRequestException('איש הצוות אינו מספק את הטיפול הזה');
     const ss = staffServiceRow as { price: number; duration: number };
-    const svc = { name: svcBase.name, price: ss.price, duration: ss.duration };
+    const svc = { name: svcBase.name, nameHe: svcBase.name_he, nameAr: svcBase.name_ar, price: ss.price, duration: ss.duration };
 
     const { data: staff } = await this.supabase
       .getClient()
@@ -536,29 +566,55 @@ export class BookingsController {
     const timeShort = time.length === 5 ? time : time.slice(0, 5);
 
     if (opts?.replaceAppointmentId) {
-      const { data: updated, error: upErr } = await this.supabase
-        .getClient()
-        .from('appointments')
-        .update({
-          branch_id: branchId,
-          staff_id: staffId,
-          service_id: serviceId,
-          date,
-          time: timeNormalized,
-          duration: svc.duration,
-          status: 'confirmed',
-          service_name: svc.name,
-          staff_name: st.name,
-          branch_name: (branch as { name: string }).name,
-          price: svc.price,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', opts.replaceAppointmentId)
-        .select('id, date, time, service_name, staff_name, branch_name, price, created_at')
-        .single();
+      /** Atomic in the DB (migration 043): re-checks blocked_slots and writes the row under a
+       * per-staff advisory lock, so this can't race with a concurrent admin block the same way a
+       * plain UPDATE could. The appointments_no_overlap exclusion constraint (040) and the
+       * max-upcoming trigger (041) still fire on the UPDATE inside that function. */
+      const { data: updatedRows, error: upErr } = await this.supabase.getClient().rpc('create_or_reschedule_appointment', {
+        p_id: opts.replaceAppointmentId,
+        p_profile_id: user.id,
+        p_client_phone: clientPhone,
+        p_client_name: clientName,
+        p_branch_id: branchId,
+        p_staff_id: staffId,
+        p_service_id: serviceId,
+        p_date: date,
+        p_time: timeNormalized,
+        p_duration: svc.duration,
+        p_service_name: svc.name,
+        p_staff_name: st.name,
+        p_branch_name: br.name,
+        p_price: svc.price,
+        p_service_name_he: svc.nameHe,
+        p_service_name_ar: svc.nameAr,
+        p_branch_name_he: br.name_he,
+        p_branch_name_ar: br.name_ar,
+      });
 
       if (upErr) {
+        const code = (upErr as { code?: string }).code;
+        const message = (upErr as { message?: string }).message || '';
+        /** 23505/23P01 = another confirmed appointment now overlaps (DB exclusion constraint);
+         * SLOT_BLOCKED = the slot fell inside a blocked range created concurrently with this
+         * reschedule (migration 043's re-check). Both mean "someone/something took it first". */
+        if (code === '23505' || code === '23P01' || message.includes('SLOT_BLOCKED')) {
+          throw new BadRequestException(
+            opts?.waitlistAccept
+              ? 'מישהו אחר הספיק לאשר את השעה לפניך. השעה נתפסה — נשארת ברשימת ההמתנה לשעות נוספות.'
+              : 'השעה נתפסה על ידי לקוח אחר — נסו שוב או בחרו שעה אחרת.',
+          );
+        }
+        if (message.includes('MAX_UPCOMING_APPOINTMENTS')) {
+          throw new BadRequestException(
+            'ניתן להחזיק עד שני תורים עתידיים בלבד. בטלו או השלימו תור לפני קביעת תור נוסף.',
+          );
+        }
         throw new BadRequestException('Failed to update appointment');
+      }
+
+      const updated = Array.isArray(updatedRows) ? updatedRows[0] : updatedRows;
+      if (!updated) {
+        throw new BadRequestException('Appointment not found');
       }
 
       this.notifications
@@ -588,6 +644,10 @@ export class BookingsController {
         serviceName: row.service_name,
         staffName: row.staff_name,
         branchName: row.branch_name,
+        serviceNameHe: row.service_name_he ?? row.service_name,
+        serviceNameAr: row.service_name_ar ?? row.service_name,
+        branchNameHe: row.branch_name_he ?? row.branch_name,
+        branchNameAr: row.branch_name_ar ?? row.branch_name,
         price: row.price,
         createdAt: row.created_at,
       };
@@ -609,37 +669,54 @@ export class BookingsController {
       );
     }
 
-    const { data: inserted, error } = await this.supabase
-      .getClient()
-      .from('appointments')
-      .insert({
-        profile_id: user.id,
-        client_phone: clientPhone,
-        client_name: clientName,
-        branch_id: branchId,
-        staff_id: staffId,
-        service_id: serviceId,
-        date,
-        time: timeNormalized,
-        duration: svc.duration,
-        status: 'confirmed',
-        service_name: svc.name,
-        staff_name: st.name,
-        branch_name: (branch as { name: string }).name,
-        price: svc.price,
-      })
-      .select('id, date, time, service_name, staff_name, branch_name, price, created_at')
-      .single();
+    /** Atomic in the DB (migration 043): re-checks blocked_slots and inserts the row under a
+     * per-staff advisory lock — the same function/lock reschedule uses above, so a concurrent
+     * admin block on this staff member can't slip in between this app-level check and the write. */
+    const { data: insertedRows, error } = await this.supabase.getClient().rpc('create_or_reschedule_appointment', {
+      p_id: null,
+      p_profile_id: user.id,
+      p_client_phone: clientPhone,
+      p_client_name: clientName,
+      p_branch_id: branchId,
+      p_staff_id: staffId,
+      p_service_id: serviceId,
+      p_date: date,
+      p_time: timeNormalized,
+      p_duration: svc.duration,
+      p_service_name: svc.name,
+      p_staff_name: st.name,
+      p_branch_name: br.name,
+      p_price: svc.price,
+      p_service_name_he: svc.nameHe,
+      p_service_name_ar: svc.nameAr,
+      p_branch_name_he: br.name_he,
+      p_branch_name_ar: br.name_ar,
+    });
 
     if (error) {
       const code = (error as { code?: string }).code;
-      if (code === '23505') {
+      const message = (error as { message?: string }).message || '';
+      /** 23505 = exact-time unique index; 23P01 = the overlap exclusion constraint (different
+       * start times that still overlap in duration); SLOT_BLOCKED = a concurrent admin block —
+       * all three mean the DB rejected a real conflict that slipped past the application-level
+       * check above under concurrent requests. */
+      if (code === '23505' || code === '23P01' || message.includes('SLOT_BLOCKED')) {
         throw new BadRequestException(
           opts?.waitlistAccept
             ? 'מישהו אחר הספיק לאשר את השעה לפניך. השעה נתפסה — נשארת ברשימת ההמתנה לשעות נוספות.'
             : 'השעה נתפסה על ידי לקוח אחר — נסו שוב או בחרו שעה אחרת.',
         );
       }
+      if (message.includes('MAX_UPCOMING_APPOINTMENTS')) {
+        throw new BadRequestException(
+          'ניתן להחזיק עד שני תורים עתידיים בלבד. בטלו או השלימו תור לפני קביעת תור נוסף.',
+        );
+      }
+      throw new BadRequestException('Failed to create appointment');
+    }
+
+    const inserted = Array.isArray(insertedRows) ? insertedRows[0] : insertedRows;
+    if (!inserted) {
       throw new BadRequestException('Failed to create appointment');
     }
 
@@ -671,6 +748,10 @@ export class BookingsController {
       serviceName: row.service_name,
       staffName: row.staff_name,
       branchName: row.branch_name,
+      serviceNameHe: row.service_name_he ?? row.service_name,
+      serviceNameAr: row.service_name_ar ?? row.service_name,
+      branchNameHe: row.branch_name_he ?? row.branch_name,
+      branchNameAr: row.branch_name_ar ?? row.branch_name,
       price: row.price,
       createdAt: row.created_at,
     };
@@ -709,6 +790,11 @@ export class BookingsController {
     }
 
     const oldTime = typeof row.time === 'string' ? row.time.slice(0, 5) : String(row.time);
+
+    /** Only tell the waitlist the old slot is free once the reschedule has actually succeeded —
+     * notifying beforehand would offer a slot that's still occupied if this update fails. */
+    const result = await this.createBookingCore(user, dto, { replaceAppointmentId: id });
+
     void this.waitlist
       .notifyFreedSlot({
         staffId: row.staff_id,
@@ -718,7 +804,7 @@ export class BookingsController {
       })
       .catch(() => {});
 
-    return this.createBookingCore(user, dto, { replaceAppointmentId: id });
+    return result;
   }
 
   @Get('my')
@@ -751,6 +837,10 @@ export class BookingsController {
       serviceName: r.service_name || 'טיפול',
       staffName: r.staff_name || '',
       branchName: r.branch_name || '',
+      serviceNameHe: r.service_name_he || r.service_name || 'טיפול',
+      serviceNameAr: r.service_name_ar || r.service_name || 'علاج',
+      branchNameHe: r.branch_name_he || r.branch_name || '',
+      branchNameAr: r.branch_name_ar || r.branch_name || '',
       price: r.price ?? 0,
       status: r.status,
       createdAt: r.created_at,

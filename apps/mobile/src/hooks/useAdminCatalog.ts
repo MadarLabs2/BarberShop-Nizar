@@ -33,7 +33,14 @@ import {
 } from '../services/admin.api';
 import { validateWorkingTimeRange } from '../utils/validators';
 import type { CatalogStaffMember } from '../services/bookings.api';
-import { upsertStaffInTeamCache, removeStaffFromTeamCache } from '../services/customerPrefetchCache';
+import {
+  upsertStaffInTeamCache,
+  removeStaffFromTeamCache,
+  upsertBranchInCaches,
+  removeBranchFromCaches,
+  patchServiceNameInCaches,
+  removeServiceFromCaches,
+} from '../services/customerPrefetchCache';
 import { prefetchImageUrlOnce } from '../services/homeStoriesCache';
 
 function staffToCatalogMember(s: Staff): CatalogStaffMember {
@@ -244,6 +251,8 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
   const [editItem, setEditItem] = useState<Branch | Service | Staff | null>(null);
   const [form, setForm] = useState({
     name: '',
+    nameHe: '',
+    nameAr: '',
     address: '',
     wazeLink: '',
     price: '',
@@ -331,6 +340,8 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
     setEditItem(null);
     setForm({
       name: '',
+      nameHe: '',
+      nameAr: '',
       address: '',
       wazeLink: '',
       price: '',
@@ -348,6 +359,8 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
       const b = item as Branch;
       setForm({
         name: b.name,
+        nameHe: b.nameHe,
+        nameAr: b.nameAr,
         address: b.address ?? '',
         wazeLink: b.wazeLink ?? '',
         price: '',
@@ -360,6 +373,8 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
       const s = item as Service;
       setForm({
         name: s.name,
+        nameHe: s.nameHe,
+        nameAr: s.nameAr,
         address: '',
         wazeLink: '',
         price: String(s.price),
@@ -372,6 +387,8 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
       const st = item as Staff;
       setForm({
         name: st.name,
+        nameHe: '',
+        nameAr: '',
         address: '',
         wazeLink: '',
         price: '',
@@ -403,37 +420,39 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
       try {
         if (activeTab === 'branches') {
           const dto = {
-            name: form.name.trim(),
+            nameHe: form.nameHe.trim(),
+            nameAr: form.nameAr.trim(),
             address: form.address.trim() || undefined,
             wazeLink: form.wazeLink.trim() || undefined,
             phone: form.branchPhone.trim() || undefined,
             instagramUrl: form.instagramUrl.trim() || undefined,
           };
           if (editItem) {
-            setBranches((list) =>
-              list.map((b) =>
-                b.id === editItem.id
-                  ? {
-                      ...b,
-                      name: dto.name,
-                      address: dto.address ?? b.address ?? null,
-                      wazeLink: dto.wazeLink ?? b.wazeLink ?? null,
-                      phone: dto.phone ?? b.phone ?? null,
-                      instagramUrl: dto.instagramUrl ?? b.instagramUrl ?? null,
-                    }
-                  : b
-              )
-            );
+            const optimisticBranch: Branch = {
+              ...(editItem as Branch),
+              name: dto.nameHe,
+              nameHe: dto.nameHe,
+              nameAr: dto.nameAr,
+              address: dto.address ?? (editItem as Branch).address ?? null,
+              wazeLink: dto.wazeLink ?? (editItem as Branch).wazeLink ?? null,
+              phone: dto.phone ?? (editItem as Branch).phone ?? null,
+              instagramUrl: dto.instagramUrl ?? (editItem as Branch).instagramUrl ?? null,
+            };
+            setBranches((list) => list.map((b) => (b.id === editItem.id ? optimisticBranch : b)));
+            upsertBranchInCaches(optimisticBranch);
             setModalVisible(false);
             setEditItem(null);
             const updated = await updateBranch(token, editItem.id, dto);
             setBranches((list) => list.map((b) => (b.id === editItem.id ? { ...b, ...updated } : b)));
+            upsertBranchInCaches({ ...optimisticBranch, ...updated });
           } else {
             isCreate = true;
             tempId = `temp-branch-${Date.now()}`;
             const temp: Branch = {
               id: tempId,
-              name: dto.name,
+              name: dto.nameHe,
+              nameHe: dto.nameHe,
+              nameAr: dto.nameAr,
               address: dto.address ?? null,
               wazeLink: dto.wazeLink ?? null,
               phone: dto.phone ?? null,
@@ -445,23 +464,45 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
             setEditItem(null);
             const created = await createBranch(token, dto);
             setBranches((list) => list.map((b) => (b.id === tempId ? created : b)));
+            upsertBranchInCaches(created);
           }
         } else if (activeTab === 'services') {
           const price = parseInt(form.price, 10);
           const duration = parseInt(form.duration, 10);
           if (isNaN(price) || price < 0) return { error: 'מחיר לא תקין' };
           if (isNaN(duration) || duration < 5) return { error: 'משך מינימלי 5 דקות' };
-          const dto = { name: form.name.trim(), price, duration };
+          const dto = { nameHe: form.nameHe.trim(), nameAr: form.nameAr.trim(), price, duration };
           if (editItem) {
-            setServices((list) => list.map((s) => (s.id === editItem.id ? { ...s, ...dto } : s)));
+            setServices((list) =>
+              list.map((s) =>
+                s.id === editItem.id
+                  ? { ...s, name: dto.nameHe, nameHe: dto.nameHe, nameAr: dto.nameAr, price: dto.price, duration: dto.duration }
+                  : s
+              )
+            );
+            patchServiceNameInCaches({ id: editItem.id, name: dto.nameHe, nameHe: dto.nameHe, nameAr: dto.nameAr });
             setModalVisible(false);
             setEditItem(null);
             const updated = await updateService(token, editItem.id, dto);
             setServices((list) => list.map((s) => (s.id === editItem.id ? { ...s, ...updated } : s)));
+            patchServiceNameInCaches({
+              id: editItem.id,
+              name: updated.nameHe,
+              nameHe: updated.nameHe,
+              nameAr: updated.nameAr,
+            });
           } else {
             isCreate = true;
             tempId = `temp-service-${Date.now()}`;
-            const temp: Service = { id: tempId, name: dto.name, price: dto.price, duration: dto.duration, isActive: true };
+            const temp: Service = {
+              id: tempId,
+              name: dto.nameHe,
+              nameHe: dto.nameHe,
+              nameAr: dto.nameAr,
+              price: dto.price,
+              duration: dto.duration,
+              isActive: true,
+            };
             setServices((list) => [...list, temp]);
             setModalVisible(false);
             setEditItem(null);
@@ -747,9 +788,13 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
             removeStaffFromTeamCache(item.id);
           }
         }
-        if (isBranch) await deleteBranch(token, item.id);
-        else if (isService) await deleteService(token, item.id);
-        else if (!isTempStaffId((item as Staff).id)) await deleteStaff(token, item.id);
+        if (isBranch) {
+          await deleteBranch(token, item.id);
+          removeBranchFromCaches(item.id);
+        } else if (isService) {
+          await deleteService(token, item.id);
+          removeServiceFromCaches(item.id);
+        } else if (!isTempStaffId((item as Staff).id)) await deleteStaff(token, item.id);
         invalidateAdminCatalogWarm();
         return { success: true };
       } catch (e) {

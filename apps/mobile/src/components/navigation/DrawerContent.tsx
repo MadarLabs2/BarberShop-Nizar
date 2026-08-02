@@ -18,12 +18,12 @@ import { useDrawerStatus, type DrawerContentComponentProps } from '@react-naviga
 import { useAuth } from '../../hooks/useAuth';
 import { countUnseenNotifications, countUnseenAppointments } from '../../contexts/BadgeSeenContext';
 import { drawerMenuSnapshotRef } from '../../navigation/DrawerMenuSnapshotBridge';
+import { BRAND_NAME } from '../../lib/config';
 import { getDrawerMenuItems, canAccessDashboardCaps } from '../../lib/navigation.roles';
 import type { DrawerMenuItem, MenuItemTarget } from '../../lib/navigation.roles';
 import { LanguageSwitcher } from '../settings/LanguageSwitcher';
 import { ScalePressable } from '../ui/ScalePressable';
-import { fetchBranches, type Branch } from '../../services/bookings.api';
-import { peekBookingBranches } from '../../services/customerPrefetchCache';
+import { useShopBranch } from '../../hooks/useShopBranch';
 import { colors, radius } from '../../theme';
 
 /** Visual section breaks without a line on every row (RTL drawer). */
@@ -52,23 +52,7 @@ function DrawerContentInner(props: DrawerContentComponentProps) {
   const [badges, setBadges] = useState(() => ({ ...badgeSnapshotRef.current }));
 
   /** Admin-editable shop Instagram — first active branch, kept in sync via customer prefetch cache. */
-  const [shopBranch, setShopBranch] = useState<Branch | null>(() => peekBookingBranches()?.[0] ?? null);
-
-  useEffect(() => {
-    if (shopBranch) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const list = peekBookingBranches() ?? (await fetchBranches());
-        if (!cancelled && list.length > 0) setShopBranch(list[0]);
-      } catch {
-        // Keep the brand footer inert if the branches fetch fails.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [shopBranch]);
+  const shopBranch = useShopBranch();
 
   useEffect(() => {
     const open = drawerStatus === 'open';
@@ -315,9 +299,9 @@ function DrawerContentInner(props: DrawerContentComponentProps) {
           onPress={onFooterBrandPress}
           activeOpacity={0.8}
           accessibilityRole="button"
-          accessibilityLabel="NezarBarberShop"
+          accessibilityLabel={BRAND_NAME}
         >
-          <Text style={styles.logoText}>NezarBarberShop</Text>
+          <Text style={styles.logoText}>{BRAND_NAME}</Text>
           <Ionicons name="logo-instagram" size={18} color={colors.accent} />
         </TouchableOpacity>
       </View>

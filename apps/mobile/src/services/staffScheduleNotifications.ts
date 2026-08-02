@@ -3,6 +3,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { MyStaffAppointment } from './admin.api';
+import { getTodayDateString, israelDateTimeToEpochMs } from '../utils/dates';
 
 /** Prefix used to identify and cancel only our scheduled notifications. */
 const STAFF_NOTIF_ID_PREFIX = 'staff-apt-';
@@ -42,25 +43,10 @@ async function cancelPreviousStaffNotifications(): Promise<void> {
   );
 }
 
-/** "09:30" → Date object for today at 09:30 */
-function timeStringToDateToday(timeStr: string): Date | null {
-  const parts = timeStr.split(':');
-  if (parts.length < 2) return null;
-  const h = parseInt(parts[0] ?? '0', 10);
-  const m = parseInt(parts[1] ?? '0', 10);
-  if (isNaN(h) || isNaN(m)) return null;
-  const d = new Date();
-  d.setHours(h, m, 0, 0);
-  return d;
-}
-
-/** "2025-01-15" → true if that is today */
+/** "2025-01-15" → true if that is today in Israel (not the device's own timezone/date — a
+ * barber's phone set to a different timezone must still group appointments by the shop's day). */
 function isToday(dateStr: string): boolean {
-  const today = new Date();
-  const y = today.getFullYear();
-  const mo = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  return dateStr === `${y}-${mo}-${day}`;
+  return dateStr === getTodayDateString();
 }
 
 /** Build a readable summary line for a single appointment. */
@@ -95,12 +81,14 @@ export async function scheduleStaffAppointmentNotifications(
 
     // ── 2. Morning briefing notification ──────────────────────────────────
     if (todayApts.length > 0) {
-      const morningTime = new Date();
-      morningTime.setHours(7, 30, 0, 0);
+      // Israel-anchored 07:30 today — not the device's own local 07:30, so a barber whose phone
+      // timezone differs from Israel still gets the briefing at the shop's actual 07:30.
+      const morningTimeMs = israelDateTimeToEpochMs(getTodayDateString(), '07:30');
+      const morningTime = new Date(morningTimeMs);
 
       // If 07:30 has already passed today, fire it 30 seconds from now
       // (so opening the app mid-day still gives the briefing)
-      const fireAt = morningTime > now ? morningTime : new Date(now.getTime() + 30_000);
+      const fireAt = morningTimeMs > now.getTime() ? morningTime : new Date(now.getTime() + 30_000);
 
       const bodyLines = todayApts.map(aptSummaryLine).join('\n');
       const title =
@@ -126,20 +114,12 @@ export async function scheduleStaffAppointmentNotifications(
 
     // ── 3. Per-appointment reminders (15 min before) ───────────────────────
     for (const apt of appointments) {
-      const aptDate = timeStringToDateToday(apt.time);
-      if (!aptDate) continue;
+      // Israel-anchored appointment start — not device-local wall time, so a barber whose phone
+      // timezone differs from Israel still gets reminded at the true appointment time.
+      const aptStartMs = israelDateTimeToEpochMs(apt.date, apt.time);
+      if (Number.isNaN(aptStartMs)) continue;
 
-      // For non-today appointments, build the correct date
-      let aptDateTime: Date;
-      if (isToday(apt.date)) {
-        aptDateTime = aptDate;
-      } else {
-        const [year, month, day] = apt.date.split('-').map(Number);
-        if (!year || !month || !day) continue;
-        aptDateTime = new Date(year, month - 1, day, aptDate.getHours(), aptDate.getMinutes(), 0, 0);
-      }
-
-      const fireAt = new Date(aptDateTime.getTime() - REMINDER_MINUTES_BEFORE * 60 * 1000);
+      const fireAt = new Date(aptStartMs - REMINDER_MINUTES_BEFORE * 60 * 1000);
 
       // Skip if reminder time has already passed
       if (fireAt <= now) continue;

@@ -30,7 +30,7 @@ import { prefsOverlapStaffWindow, timeToMins } from '../../utils/waitlistPrefs';
 import { useAuth } from '../../hooks/useAuth';
 import { openDrawer } from '../../utils/nav';
 import { useTranslation } from 'react-i18next';
-import { localizeCatalogString, useAppLocale } from '../../contexts/LocaleContext';
+import { pickLocalizedName, useAppLocale } from '../../contexts/LocaleContext';
 import { colors, spacing, radius, shadows, layout, textStyles, presets, iconSize } from '../../theme';
 import { LAYOUT_EASE_OUT_SMOOTH, TEAM_SCREEN_ENTER_MS, TEAM_SCREEN_ENTER_RISE_FROM_Y } from '../../theme/motion';
 import { revalidateBookableStaffList, syncCustomerPrefetchToken } from '../../services/customerPrefetchCache';
@@ -652,8 +652,8 @@ export function BookingScreen() {
     return [
       { key: 'day', label: t('booking.day'), value: formatDateWithWeekday(selectedDate, localeTag) },
       { key: 'time', label: t('booking.time'), value: selectedTime },
-      { key: 'service', label: t('booking.service'), value: localizeCatalogString(service.name, locale) },
-      { key: 'branch', label: t('booking.branch'), value: localizeCatalogString(branch.name, locale) },
+      { key: 'service', label: t('booking.service'), value: pickLocalizedName(service, locale) },
+      { key: 'branch', label: t('booking.branch'), value: pickLocalizedName(branch, locale) },
       { key: 'staff', label: t('booking.confirmSummaryStaff'), value: staffMember.name },
     ];
   }, [selectedDate, selectedTime, service, staffMember, branch, localeTag, locale, t]);
@@ -769,8 +769,8 @@ export function BookingScreen() {
                 : branches.length === 0
                   ? t('booking.dash')
                   : !requiresBranchChoice
-                    ? localizeCatalogString(branch?.name, locale) || t('booking.dash')
-                    : localizeCatalogString(branch?.name, locale) || t('booking.pickBranch')
+                    ? (branch ? pickLocalizedName(branch, locale) : '') || t('booking.dash')
+                    : (branch ? pickLocalizedName(branch, locale) : '') || t('booking.pickBranch')
           }
           placeholder={staffPicked && requiresBranchChoice && !branch}
           disabled={!staffPicked || !requiresBranchChoice || branches.length === 0 || bookingBlockedByLimit}
@@ -781,7 +781,7 @@ export function BookingScreen() {
         />
         <BookingSelectionRow
           label={t('booking.service')}
-          value={service ? localizeCatalogString(service.name, locale) : t('booking.pickService')}
+          value={service ? pickLocalizedName(service, locale) : t('booking.pickService')}
           placeholder={!service}
           disabled={!staffPicked || !branch || bookingBlockedByLimit}
           onPress={() => {
@@ -846,7 +846,7 @@ export function BookingScreen() {
               activeOpacity={0.8}
             >
               <Text style={[styles.choiceCardText, branch?.id === b.id && styles.choiceCardTextSelected]}>
-                {localizeCatalogString(b.name, locale)}
+                {pickLocalizedName(b, locale)}
               </Text>
             </TouchableOpacity>
           ))
@@ -870,7 +870,7 @@ export function BookingScreen() {
             activeOpacity={0.8}
           >
             <Text style={[styles.choiceCardText, service?.id === s.id && styles.choiceCardTextSelected]}>
-              {localizeCatalogString(s.name, locale)}
+              {pickLocalizedName(s, locale)}
             </Text>
             <View style={styles.serviceBadge}>
               <Text style={styles.serviceBadgeText}>₪{s.price}</Text>

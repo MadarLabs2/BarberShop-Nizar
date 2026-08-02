@@ -3,14 +3,16 @@ import { apiFetch } from './api';
 export type Branch = {
   id: string;
   name: string;
+  nameHe: string;
+  nameAr: string;
   address: string | null;
   wazeLink: string | null;
   phone: string | null;
   instagramUrl: string | null;
 };
-export type Service = { id: string; name: string; price: number; duration: number };
+export type Service = { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number };
 export type WorkingDayHours = { dayOfWeek: number; startTime: string; endTime: string };
-export type StaffService = { id: string; name: string; price: number; duration: number };
+export type StaffService = { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number };
 export type StaffForBranch = {
   id: string;
   name: string;
@@ -92,6 +94,7 @@ export async function getAvailableSlots(params: {
   staffId: string;
   date: string;
   serviceId: string;
+  branchId: string;
   /** When editing an existing booking, exclude it from overlap so the current slot stays available. */
   excludeAppointmentId?: string;
 }): Promise<{ slots: string[]; isNotWorkDay?: boolean }> {
@@ -99,6 +102,7 @@ export async function getAvailableSlots(params: {
     staffId: params.staffId,
     date: params.date,
     serviceId: params.serviceId,
+    branchId: params.branchId,
   });
   if (params.excludeAppointmentId) {
     q.set('excludeAppointmentId', params.excludeAppointmentId);
@@ -113,6 +117,10 @@ export type CreatedAppointment = {
   serviceName: string;
   staffName: string;
   branchName: string;
+  serviceNameHe: string;
+  serviceNameAr: string;
+  branchNameHe: string;
+  branchNameAr: string;
   price: number;
   createdAt: string;
 };
@@ -147,6 +155,10 @@ export type AppointmentDto = {
   serviceName: string;
   staffName: string;
   branchName: string;
+  serviceNameHe: string;
+  serviceNameAr: string;
+  branchNameHe: string;
+  branchNameAr: string;
   price: number;
   status: string;
   createdAt: string;
@@ -218,6 +230,10 @@ export type MyWaitlistEntry = {
   staffName: string;
   serviceName: string;
   branchName: string;
+  serviceNameHe: string;
+  serviceNameAr: string;
+  branchNameHe: string;
+  branchNameAr: string;
 };
 
 export async function joinWaitlist(
@@ -257,6 +273,10 @@ export type WaitlistSlotOffer = {
   serviceName: string;
   branchId: string | null;
   branchName: string;
+  serviceNameHe: string;
+  serviceNameAr: string;
+  branchNameHe: string;
+  branchNameAr: string;
   createdAt: string;
 };
 

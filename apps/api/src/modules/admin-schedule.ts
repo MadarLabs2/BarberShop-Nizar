@@ -214,7 +214,8 @@ export class AdminScheduleService {
 
     const client = this.supabase.getClient();
 
-    /** Reject a new block that overlaps one already covering this staff+date — prevents duplicate/overlapping blocks. */
+    /** Fast-path pre-check for a friendly error message; the DB exclusion constraint (migration
+     * 042) is the real backstop against a concurrent overlapping block slipping past this. */
     const { data: existing } = await client
       .from('blocked_slots')
       .select('time, duration')
@@ -230,21 +231,65 @@ export class AdminScheduleService {
     }
 
     const duration = endMins - startMins;
-    const { data, error } = await client
-      .from('blocked_slots')
-      .insert({ staff_id: staffId, date: dateStr, time: timeShort, duration })
-      .select('id')
-      .single();
-    if (error) throw new BadRequestException(error.message);
-    const cancelledAppointments = await this.cancelOverlappingConfirmedAppointments(
-      staffId,
-      dateStr,
-      startMins,
-      endMins,
-    );
+
+    /** Atomic in the DB: inserting the block and cancelling any confirmed appointments it now
+     * overlaps happen in one transaction (migration 042), so a failure partway can't leave the
+     * block created with a conflicting appointment still confirmed. */
+    const { data: rows, error } = await client.rpc('add_blocked_slot_and_cancel_overlaps', {
+      p_staff_id: staffId,
+      p_date: dateStr,
+      p_time: timeShort,
+      p_duration: duration,
+    });
+
+    if (error) {
+      const code = (error as { code?: string }).code;
+      if (code === '23P01') {
+        throw new BadRequestException('טווח השעות חופף לחסימה קיימת עבור איש הצוות בתאריך זה');
+      }
+      throw new BadRequestException(error.message);
+    }
+
+    type RpcRow = {
+      block_id: string;
+      cancelled_appointment_id: string | null;
+      cancelled_client_phone: string | null;
+      cancelled_service_name: string | null;
+      cancelled_time: string | null;
+      cancelled_service_id: string | null;
+    };
+    const resultRows = (rows || []) as RpcRow[];
+    const blockId = resultRows[0]?.block_id;
+    const cancelled = resultRows.filter((r) => r.cancelled_appointment_id);
+
+    for (const row of cancelled) {
+      const timeStr = row.cancelled_time || '';
+      void this.waitlist
+        .notifyFreedSlot({
+          staffId,
+          date: dateStr,
+          time: timeStr,
+          serviceId: row.cancelled_service_id ?? undefined,
+        })
+        .catch(() => {});
+
+      if (row.cancelled_client_phone) {
+        const dateDisplay = formatIsraelDateLabel(dateStr);
+        const svcName = row.cancelled_service_name || 'טיפול';
+        this.notifications
+          .create({
+            userPhone: row.cancelled_client_phone,
+            type: 'personal',
+            title: 'התור בוטל',
+            body: `מצטערים — נאלצנו לבטל את התור ל${svcName} בתאריך ${dateDisplay} בשעה ${timeStr} עקב נסיבות בלתי צפויות. אנו מתנצלים על אי הנוחות ונשמח לעזור לקבוע מועד חדש.`,
+          })
+          .catch(() => {});
+      }
+    }
+
     await this.cache.invalidateBookingsSlotsForStaffDate(staffId, dateStr);
-    if (cancelledAppointments > 0) await this.cache.invalidateAdminSummary();
-    return { ...data, cancelledAppointments };
+    if (cancelled.length > 0) await this.cache.invalidateAdminSummary();
+    return { id: blockId, cancelledAppointments: cancelled.length };
   }
 
   async removeBlockedSlot(id: string) {
@@ -342,87 +387,12 @@ export class AdminScheduleService {
     return this.removeBlockedSlot(id);
   }
 
-  /** Confirmed appointments overlapping [blockStartMins, blockEndMins) are cancelled; clients get in-app notification; waitlist is notified per slot. */
-  private async cancelOverlappingConfirmedAppointments(
-    staffId: string,
-    dateStr: string,
-    blockStartMins: number,
-    blockEndMins: number,
-  ): Promise<number> {
-    const client = this.supabase.getClient();
-    const { data, error } = await client
-      .from('appointments')
-      .select('id, client_phone, service_name, date, time, duration, staff_id, service_id')
-      .eq('staff_id', staffId)
-      .eq('date', dateStr)
-      .eq('status', 'confirmed');
-
-    if (error || !data?.length) return 0;
-
-    type AptRow = {
-      id: string;
-      client_phone: string | null;
-      service_name: string | null;
-      date: string;
-      time: string;
-      duration: number | null;
-      staff_id: string;
-      service_id: string;
-    };
-
-    const overlapping = (data as AptRow[]).filter((row) => {
-      const t = typeof row.time === 'string' ? row.time.slice(0, 5) : String(row.time);
-      const aptStart = this.timeToMins(t);
-      const aptDur = row.duration && row.duration > 0 ? row.duration : 40;
-      const aptEnd = aptStart + aptDur;
-      return aptStart < blockEndMins && aptEnd > blockStartMins;
-    });
-
-    if (overlapping.length === 0) return 0;
-
-    const nowIso = new Date().toISOString();
-    const ids = overlapping.map((r) => r.id);
-    const { error: upErr } = await client
-      .from('appointments')
-      .update({ status: 'cancelled', updated_at: nowIso })
-      .in('id', ids);
-
-    if (upErr) throw new BadRequestException(upErr.message);
-
-    for (const row of overlapping) {
-      const timeShort = typeof row.time === 'string' ? row.time.slice(0, 5) : String(row.time);
-      void this.waitlist
-        .notifyFreedSlot({
-          staffId: row.staff_id,
-          date: row.date,
-          time: timeShort,
-          serviceId: row.service_id,
-        })
-        .catch(() => {});
-
-      if (row.client_phone) {
-        const dateDisplay = formatIsraelDateLabel(row.date);
-        const svcName = row.service_name || 'טיפול';
-        this.notifications
-          .create({
-            userPhone: row.client_phone,
-            type: 'personal',
-            title: 'התור בוטל',
-            body: `מצטערים — נאלצנו לבטל את התור ל${svcName} בתאריך ${dateDisplay} בשעה ${timeShort} עקב נסיבות בלתי צפויות. אנו מתנצלים על אי הנוחות ונשמח לעזור לקבוע מועד חדש.`,
-          })
-          .catch(() => {});
-      }
-    }
-
-    return overlapping.length;
-  }
-
   /**
    * When a working day's hours shrink (or the day is removed entirely), cancel any confirmed
-   * future appointment on that weekday that no longer fits inside the kept window. Mirrors
-   * `cancelOverlappingConfirmedAppointments` but scans every future date matching `dayOfWeek`
-   * instead of a single date, since a schedule change applies to every future occurrence of that day.
-   * `keepWindow: null` means the day has no working hours at all anymore — cancel everything on it.
+   * future appointment on that weekday that no longer fits inside the kept window. Scans every
+   * future date matching `dayOfWeek`, since a schedule change applies to every future occurrence
+   * of that day. `keepWindow: null` means the day has no working hours at all anymore — cancel
+   * everything on it.
    */
   private async cancelAppointmentsOutsideWorkingWindow(
     staffId: string,

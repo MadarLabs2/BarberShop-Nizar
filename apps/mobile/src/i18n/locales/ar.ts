@@ -534,6 +534,8 @@ export const ar: TranslationTree = {
     fullNamePh: 'الاسم الكامل',
     phoneStaffPh: 'الهاتف (دخول الموظف)',
     namePh: 'الاسم',
+    nameHePh: 'الاسم بالعبرية',
+    nameArPh: 'الاسم بالعربية',
     priceShekelPh: 'السعر ₪',
     minutesPh: 'الدقائق',
     addressPh: 'العنوان',

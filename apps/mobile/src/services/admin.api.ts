@@ -4,6 +4,8 @@ import { callOn401 } from './api.on401';
 export type Branch = {
   id: string;
   name: string;
+  nameHe: string;
+  nameAr: string;
   address: string | null;
   wazeLink: string | null;
   phone: string | null;
@@ -13,6 +15,8 @@ export type Branch = {
 export type Service = {
   id: string;
   name: string;
+  nameHe: string;
+  nameAr: string;
   price: number;
   duration: number;
   isActive: boolean;
@@ -57,7 +61,7 @@ export async function getAdminCatalog(token: string): Promise<AdminCatalog> {
 
 export async function createBranch(
   token: string,
-  dto: { name: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string }
+  dto: { nameHe: string; nameAr: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string }
 ): Promise<Branch> {
   return apiFetch<Branch>('/admin/branches', {
     method: 'POST',
@@ -69,7 +73,7 @@ export async function createBranch(
 export async function updateBranch(
   token: string,
   id: string,
-  dto: { name?: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string; isActive?: boolean }
+  dto: { nameHe?: string; nameAr?: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string; isActive?: boolean }
 ): Promise<Branch> {
   return apiFetch<Branch>(`/admin/branches/${id}`, {
     method: 'PATCH',
@@ -84,7 +88,7 @@ export async function deleteBranch(token: string, id: string) {
 
 export async function createService(
   token: string,
-  dto: { name: string; price: number; duration: number }
+  dto: { nameHe: string; nameAr: string; price: number; duration: number }
 ): Promise<Service> {
   return apiFetch<Service>('/admin/services', {
     method: 'POST',
@@ -96,7 +100,7 @@ export async function createService(
 export async function updateService(
   token: string,
   id: string,
-  dto: { name?: string; price?: number; duration?: number; isActive?: boolean }
+  dto: { nameHe?: string; nameAr?: string; price?: number; duration?: number; isActive?: boolean }
 ): Promise<Service> {
   return apiFetch<Service>(`/admin/services/${id}`, {
     method: 'PATCH',

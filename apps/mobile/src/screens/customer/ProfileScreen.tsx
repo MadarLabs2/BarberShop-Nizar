@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
@@ -22,8 +21,7 @@ import {
   buildWhatsAppChatUrl,
 } from '../../lib/config';
 import { toE164 } from '../../utils/phone';
-import { fetchBranches, type Branch } from '../../services/bookings.api';
-import { peekBookingBranches } from '../../services/customerPrefetchCache';
+import { useShopBranch } from '../../hooks/useShopBranch';
 import type { RootDrawerParamList } from '../../navigation/paramList';
 import { colors, spacing, radius, presets, textStyles, shadows, iconSize, layout } from '../../theme';
 import { formatIsoDateDmy } from '../../utils/dates';
@@ -84,23 +82,7 @@ export function ProfileScreen() {
   };
 
   /** Admin-editable shop phone — first active branch, kept in sync via customer prefetch cache. */
-  const [shopBranch, setShopBranch] = useState<Branch | null>(() => peekBookingBranches()?.[0] ?? null);
-
-  useEffect(() => {
-    if (shopBranch) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const list = peekBookingBranches() ?? (await fetchBranches());
-        if (!cancelled && list.length > 0) setShopBranch(list[0]);
-      } catch {
-        // Keep hardcoded fallback contact info if the branches fetch fails.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [shopBranch]);
+  const shopBranch = useShopBranch();
 
   const shopPhoneDisplay = shopBranch?.phone || BARBERSHOP_PHONE;
 

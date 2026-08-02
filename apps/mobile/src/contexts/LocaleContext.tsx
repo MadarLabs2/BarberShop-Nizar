@@ -23,6 +23,16 @@ export function localizeCatalogString(text: string | null | undefined, locale: A
   return CATALOG_HE_TO_AR[raw] ?? CATALOG_HE_TO_AR[compact] ?? raw;
 }
 
+/**
+ * Picks the admin-entered name matching the current app language for a service/branch — real
+ * per-record translation (nameHe/nameAr), not the CATALOG_HE_TO_AR dictionary guess above. Falls
+ * back to the other language rather than ever showing a blank string (e.g. legacy rows before an
+ * admin fills in both).
+ */
+export function pickLocalizedName(item: { nameHe: string; nameAr: string }, locale: AppLocale): string {
+  return locale === 'ar' ? item.nameAr || item.nameHe : item.nameHe || item.nameAr;
+}
+
 type LocaleContextValue = {
   locale: AppLocale;
   setLocale: (next: AppLocale) => Promise<void>;
