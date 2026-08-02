@@ -899,17 +899,57 @@ export class AdminCatalogService {
     return out;
   }
 
+  /**
+   * A service with no appointment history can be removed outright. One that's actually been
+   * booked can't — `appointments.service_id` has no ON DELETE clause (defaults to RESTRICT), and
+   * that's intentional: appointment rows are real business/booking records and must never be lost
+   * just because a service was later removed from the catalog. In that case, fall back to
+   * deactivating it — but also explicitly drop its `staff_service` links, which used to survive a
+   * deactivation and then show up in the booking picker as a phantom "טיפול" placeholder entry
+   * (its `service_id` no longer resolved to any active service, but the leftover staff_service row
+   * with its stale price/duration was still being served).
+   */
   async deleteService(id: string) {
-    const { error } = await this.supabase.getClient().from('services').update({ is_active: false }).eq('id', id);
-    if (error) throw new BadRequestException(error.message);
+    const { error: deleteErr } = await this.supabase.getClient().from('services').delete().eq('id', id);
+    if (!deleteErr) {
+      await this.cache.invalidateCatalogAndAdmin();
+      await this.cache.invalidateAllBookingsSlots();
+      return { ok: true };
+    }
+    if ((deleteErr as { code?: string }).code !== '23503') {
+      throw new BadRequestException(deleteErr.message);
+    }
+    const { error: deactivateErr } = await this.supabase
+      .getClient()
+      .from('services')
+      .update({ is_active: false })
+      .eq('id', id);
+    if (deactivateErr) throw new BadRequestException(deactivateErr.message);
+    await this.supabase.getClient().from('staff_service').delete().eq('service_id', id);
     await this.cache.invalidateCatalogAndAdmin();
     await this.cache.invalidateAllBookingsSlots();
     return { ok: true };
   }
 
+  /** Same reasoning as `deleteService` — real delete when there's no appointment history for this
+   * branch, otherwise deactivate and drop its `branch_staff` links so it can't linger as a
+   * still-assigned branch for any staff member. */
   async deleteBranch(id: string) {
-    const { error } = await this.supabase.getClient().from('branches').update({ is_active: false }).eq('id', id);
-    if (error) throw new BadRequestException(error.message);
+    const { error: deleteErr } = await this.supabase.getClient().from('branches').delete().eq('id', id);
+    if (!deleteErr) {
+      await this.cache.invalidateCatalogAndAdmin();
+      return { ok: true };
+    }
+    if ((deleteErr as { code?: string }).code !== '23503') {
+      throw new BadRequestException(deleteErr.message);
+    }
+    const { error: deactivateErr } = await this.supabase
+      .getClient()
+      .from('branches')
+      .update({ is_active: false })
+      .eq('id', id);
+    if (deactivateErr) throw new BadRequestException(deactivateErr.message);
+    await this.supabase.getClient().from('branch_staff').delete().eq('branch_id', id);
     await this.cache.invalidateCatalogAndAdmin();
     return { ok: true };
   }

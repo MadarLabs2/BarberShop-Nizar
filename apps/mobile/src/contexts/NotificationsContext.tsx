@@ -36,7 +36,7 @@ export type NotificationsState = {
 export type NotificationsContextValue = NotificationsState & {
   notificationsEnabled: boolean;
   notificationsPrefsReady: boolean;
-  refresh: (token: string | null) => Promise<NotificationDto[] | null>;
+  refresh: (token: string | null, options?: { forceNetwork?: boolean }) => Promise<NotificationDto[] | null>;
   forceRefresh: (token: string | null) => Promise<NotificationDto[] | null>;
   invalidate: () => void;
   setNotificationsEnabled: (enabled: boolean, token?: string | null) => Promise<void>;
@@ -325,7 +325,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     };
   }, [notificationsPrefsReady, notificationsEnabled, prefsScope]);
 
-  const refresh = useCallback(async (token: string | null): Promise<NotificationDto[] | null> => {
+  const refresh = useCallback(async (
+    token: string | null,
+    options?: { forceNetwork?: boolean },
+  ): Promise<NotificationDto[] | null> => {
     if (!notificationsEnabled) {
       refreshInFlightRef.current = null;
       setState((s) => ({
@@ -351,7 +354,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       refreshInFlightRef.current = null;
       return null;
     }
-    if (!isStale(stateRef.current.lastFetchedAt)) {
+    if (!options?.forceNetwork && !isStale(stateRef.current.lastFetchedAt)) {
       return stateRef.current.items;
     }
     if (refreshInFlightRef.current) {
@@ -396,7 +399,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         }
       }
 
-      if (!isStale(lastFetchedAt)) {
+      if (!options?.forceNetwork && !isStale(lastFetchedAt)) {
         refreshInFlightRef.current = null;
         return items;
       }

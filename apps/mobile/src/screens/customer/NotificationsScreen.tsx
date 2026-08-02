@@ -98,6 +98,7 @@ export function NotificationsScreen() {
     items: notifications,
     error,
     deleting,
+    refresh,
     forceRefresh,
     deleteAll,
     hasLoadedOnce,
@@ -130,19 +131,21 @@ export function NotificationsScreen() {
       focusEnter.value = withTiming(1, { duration: 220 });
       void (async () => {
         if (!token) return;
-        // Always hit the server on focus — `refresh()`'s 20s staleness window meant opening this
-        // screen shortly after any other background sync (e.g. Home's on-mount refresh) skipped
-        // the fetch and showed whatever was cached then, missing a notification created in
-        // between. `forceRefresh` bypasses that check; this screen never reads `loading`/
-        // `refreshing` for anything, so it stays silent — no spinner or reload flash.
-        const items = await forceRefresh(token);
+        // `refresh(..., { forceNetwork: true })` keeps its normal cache-first instant paint (peek,
+        // then disk) so the screen never sits blank while waiting on the server — but unlike a
+        // plain `refresh()`, it never skips the network call just because the last fetch was under
+        // the 20s staleness window (e.g. right after Home's on-mount background sync), so a
+        // notification created in between still shows up without a manual pull. `forceRefresh`
+        // (used only by pull-to-refresh) has no cache step at all — using it here is what caused
+        // the screen to render empty/loading for a few seconds before content appeared.
+        const items = await refresh(token, { forceNetwork: true });
         if (cancelled || items === null) return;
         await markSeenRef.current(items);
       })();
       return () => {
         cancelled = true;
       };
-    }, [token, forceRefresh, focusEnter]),
+    }, [token, refresh, focusEnter]),
   );
 
   const onRefresh = useCallback(async () => {

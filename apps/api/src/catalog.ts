@@ -382,13 +382,16 @@ export class CatalogService {
     > = {};
     for (const r of staffServiceRows || []) {
       const row = r as { staff_id: string; service_id: string; price: number; duration: number };
-      if (!serviceMap[row.staff_id]) serviceMap[row.staff_id] = [];
       const svcName = serviceNameMap[row.service_id];
+      // service_id has no matching active row (deleted/deactivated service whose staff_service
+      // link was never cleaned up) — exclude it rather than showing a fake placeholder service.
+      if (!svcName) continue;
+      if (!serviceMap[row.staff_id]) serviceMap[row.staff_id] = [];
       serviceMap[row.staff_id].push({
         id: row.service_id,
-        name: svcName?.name ?? 'טיפול',
-        nameHe: svcName?.nameHe ?? 'טיפול',
-        nameAr: svcName?.nameAr ?? 'علاج',
+        name: svcName.name,
+        nameHe: svcName.nameHe,
+        nameAr: svcName.nameAr,
         price: row.price,
         duration: row.duration,
       });
@@ -505,11 +508,14 @@ export class CatalogService {
     for (const r of staffServiceRows || []) {
       const row = r as { service_id: string; price: number; duration: number };
       const svcName = serviceNameMap[row.service_id];
+      // service_id has no matching active row (deleted/deactivated service whose staff_service
+      // link was never cleaned up) — exclude it rather than showing a fake placeholder service.
+      if (!svcName) continue;
       services.push({
         id: row.service_id,
-        name: svcName?.name ?? 'טיפול',
-        nameHe: svcName?.nameHe ?? 'טיפול',
-        nameAr: svcName?.nameAr ?? 'علاج',
+        name: svcName.name,
+        nameHe: svcName.nameHe,
+        nameAr: svcName.nameAr,
         price: row.price,
         duration: row.duration,
       });
