@@ -23,7 +23,7 @@ describe('buildAddAppointmentRoute', () => {
     const route = buildAddAppointmentRoute(staffList, '2026-08-02');
     expect(route).toEqual({
       screen: 'AdminStaffSchedule',
-      params: { staffId: undefined, date: '2026-08-02', returnTo: 'Dashboard' },
+      params: { staffId: undefined, date: '2026-08-02', returnTo: 'Dashboard', mode: 'add' },
     });
   });
 
@@ -31,7 +31,7 @@ describe('buildAddAppointmentRoute', () => {
     const route = buildAddAppointmentRoute([{ id: 'staff-1', name: 'Alice' }], '2026-08-02');
     expect(route).toEqual({
       screen: 'AdminStaffSchedule',
-      params: { staffId: 'staff-1', date: '2026-08-02', returnTo: 'Dashboard' },
+      params: { staffId: 'staff-1', date: '2026-08-02', returnTo: 'Dashboard', mode: 'add' },
     });
   });
 
@@ -39,9 +39,10 @@ describe('buildAddAppointmentRoute', () => {
     expect(buildAddAppointmentRoute([], '2026-08-02')).toBeNull();
   });
 
-  it('always sets returnTo to Dashboard, and carries the given date through unchanged', () => {
+  it('always sets returnTo to Dashboard and mode to add, and carries the given date through unchanged', () => {
     const route = buildAddAppointmentRoute(staffList, '2026-12-25');
     expect(route?.params.returnTo).toBe('Dashboard');
+    expect(route?.params.mode).toBe('add');
     expect(route?.params.date).toBe('2026-12-25');
   });
 });

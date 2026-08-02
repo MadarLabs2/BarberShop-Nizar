@@ -36,14 +36,16 @@ describe('overlaps', () => {
 /**
  * These reproduce the same grid-generation loop `computeAvailableSlots` uses in bookings.ts
  * (candidate start = shift start, step = requested service's own duration), against the required
- * scenarios. Scenario #4 and #5 pass; scenario #3 is included to document a real, currently
- * UNFIXED gap (out of scope for this pass, flagged in the audit) rather than pretend it's fixed —
- * see the Booking Logic & Timezone audit finding on mixed-duration slot-grid under-reporting.
+ * scenarios. Closing time is the last valid *start*, not the last valid finish — a candidate is
+ * kept as long as it starts at or before the shift's end, even if the service would run past it.
+ * Scenario #3 is included to document a real, currently UNFIXED gap (out of scope for this pass,
+ * flagged in the audit) rather than pretend it's fixed — see the Booking Logic & Timezone audit
+ * finding on mixed-duration slot-grid under-reporting.
  */
 function generateSlots(startMins: number, endMins: number, duration: number, booked: { start: number; duration: number }[]): number[] {
   const slots: number[] = [];
   let mins = startMins;
-  while (mins + duration <= endMins) {
+  while (mins <= endMins) {
     const blocked = booked.some((b) => overlaps(b.start, b.duration, mins, duration));
     if (!blocked) slots.push(mins);
     mins += duration;
@@ -52,17 +54,30 @@ function generateSlots(startMins: number, endMins: number, duration: number, boo
 }
 
 describe('computeAvailableSlots grid (required scenarios)', () => {
-  it('#4 — offers the last valid slot before closing', () => {
-    // Shift 09:00-19:00 (540-1140), 40-min service -> last slot must be 18:20 (1100), fitting exactly to 19:00.
+  it('#4 — offers closing time itself as the last valid start for a 40-min service', () => {
+    // Shift 09:00-19:00 (540-1140), 40-min service -> grid steps 540,580,...,1140; 19:00 (1140) must
+    // be offered even though the appointment would finish at 19:40, past closing.
     const slots = generateSlots(540, 1140, 40, []);
-    expect(slots[slots.length - 1]).toBe(1100);
-    expect(minsToTime(slots[slots.length - 1])).toBe('18:20');
+    expect(slots[slots.length - 1]).toBe(1140);
+    expect(minsToTime(slots[slots.length - 1])).toBe('19:00');
   });
 
-  it('#5 — never offers a slot that would finish after closing', () => {
-    const slots = generateSlots(540, 1140, 40, []);
-    expect(slots.every((s) => s + 40 <= 1140)).toBe(true);
-    expect(slots).not.toContain(1110); // 18:30 + 40 = 19:10, past closing
+  it('#4b — offers closing time itself as the last valid start for a 50-min service', () => {
+    // Shift 09:00-19:00 (540-1140), 50-min service -> grid steps 540,590,...,1140; 19:00 (1140) must
+    // be offered even though the appointment would finish at 19:50, past closing.
+    const slots = generateSlots(540, 1140, 50, []);
+    expect(slots[slots.length - 1]).toBe(1140);
+    expect(minsToTime(slots[slots.length - 1])).toBe('19:00');
+  });
+
+  it('#5 — never offers a slot that starts after closing', () => {
+    const slots40 = generateSlots(540, 1140, 40, []);
+    expect(slots40.every((s) => s <= 1140)).toBe(true);
+    expect(slots40).not.toContain(1180); // 19:40 — starts after closing, must never be offered
+
+    const slots50 = generateSlots(540, 1140, 50, []);
+    expect(slots50.every((s) => s <= 1140)).toBe(true);
+    expect(slots50).not.toContain(1190); // 19:50 — starts after closing, must never be offered
   });
 
   it('#3 — KNOWN GAP (not fixed this pass): a free gap after a differently-sized booked service is not offered', () => {

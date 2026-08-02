@@ -272,7 +272,9 @@ export class AdminScheduleService {
     const startMins = this.timeToMins(dayRow.start_time ? String(dayRow.start_time).slice(0, 5) : '09:00');
     const endMins = this.timeToMins(dayRow.end_time ? String(dayRow.end_time).slice(0, 5) : '19:00');
     const slotMins = this.timeToMins(time);
-    if (slotMins < startMins || slotMins + ss.duration > endMins) {
+    /** Closing time is the last valid *start*, not the last valid finish — matches the customer
+     * booking flow's computeAvailableSlots/createBookingCore rule. */
+    if (slotMins < startMins || slotMins > endMins) {
       throw new BadRequestException('השעה שנבחרה מחוץ לשעות העבודה של איש הצוות');
     }
 
@@ -633,9 +635,9 @@ export class AdminScheduleService {
       if (!keepWindow) return true;
       const t = typeof row.time === 'string' ? row.time.slice(0, 5) : String(row.time);
       const aptStart = this.timeToMins(t);
-      const aptDur = row.duration && row.duration > 0 ? row.duration : 40;
-      const aptEnd = aptStart + aptDur;
-      return !(aptStart >= keepWindow.startMins && aptEnd <= keepWindow.endMins);
+      /** Closing time is the last valid *start* — an appointment that starts within the new
+       * window is kept even if it finishes after it, matching the booking rule everywhere else. */
+      return !(aptStart >= keepWindow.startMins && aptStart <= keepWindow.endMins);
     });
 
     if (affected.length === 0) return 0;

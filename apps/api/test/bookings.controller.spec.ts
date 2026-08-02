@@ -168,6 +168,91 @@ describe('BookingsController — required booking scenarios', () => {
     ).rejects.toThrow('Branch not available');
   });
 
+  describe('closing time is the last valid start, not the last valid finish (shift 09:00-19:00)', () => {
+    it('offers 19:00 as the final slot for a 40-minute service', async () => {
+      const { controller } = await buildController(baseTables(tomorrow, dow));
+      const { slots } = await controller.getAvailableSlots(STAFF_ID, tomorrow, SERVICE_ID, BRANCH_ID);
+      expect(slots[slots.length - 1]).toBe('19:00');
+      expect(slots).not.toContain('19:10'); // no start past closing, even though the grid steps by 40
+    });
+
+    it('offers 19:00 as the final slot for a 50-minute service', async () => {
+      const { controller } = await buildController(
+        baseTables(tomorrow, dow, {
+          staff_service: [{ staff_id: STAFF_ID, service_id: SERVICE_ID, price: 100, duration: 50 }],
+        }),
+      );
+      const { slots } = await controller.getAvailableSlots(STAFF_ID, tomorrow, SERVICE_ID, BRANCH_ID);
+      expect(slots[slots.length - 1]).toBe('19:00');
+      expect(slots).not.toContain('19:10');
+    });
+
+    it('allows creating a 40-minute booking starting exactly at closing time, even though it finishes after close', async () => {
+      const { controller, fakeClient } = await buildController(baseTables(tomorrow, dow));
+      (fakeClient.rpc as jest.Mock).mockResolvedValueOnce({
+        data: [
+          {
+            id: 'new-apt-at-close',
+            date: tomorrow,
+            time: '19:00',
+            service_name: 'תספורת',
+            staff_name: 'יוסי',
+            branch_name: 'סניף מרכזי',
+            price: 100,
+            created_at: new Date().toISOString(),
+          },
+        ],
+        error: null,
+      });
+      const result = await controller.create(user, {
+        branchId: BRANCH_ID,
+        staffId: STAFF_ID,
+        serviceId: SERVICE_ID,
+        date: tomorrow,
+        time: '19:00',
+      });
+      expect((result as { id: string }).id).toBe('new-apt-at-close');
+    });
+
+    it('allows creating a 50-minute booking starting exactly at closing time, even though it finishes after close', async () => {
+      const { controller, fakeClient } = await buildController(
+        baseTables(tomorrow, dow, {
+          staff_service: [{ staff_id: STAFF_ID, service_id: SERVICE_ID, price: 100, duration: 50 }],
+        }),
+      );
+      (fakeClient.rpc as jest.Mock).mockResolvedValueOnce({
+        data: [
+          {
+            id: 'new-apt-50-at-close',
+            date: tomorrow,
+            time: '19:00',
+            service_name: 'תספורת',
+            staff_name: 'יוסי',
+            branch_name: 'סניף מרכזי',
+            price: 100,
+            created_at: new Date().toISOString(),
+          },
+        ],
+        error: null,
+      });
+      const result = await controller.create(user, {
+        branchId: BRANCH_ID,
+        staffId: STAFF_ID,
+        serviceId: SERVICE_ID,
+        date: tomorrow,
+        time: '19:00',
+      });
+      expect((result as { id: string }).id).toBe('new-apt-50-at-close');
+    });
+
+    it('still rejects a booking that starts after closing time', async () => {
+      const { controller } = await buildController(baseTables(tomorrow, dow));
+      await expect(
+        controller.create(user, { branchId: BRANCH_ID, staffId: STAFF_ID, serviceId: SERVICE_ID, date: tomorrow, time: '19:10' }),
+      ).rejects.toThrow('השעה שבחרת חורגת משעות העבודה של איש הצוות');
+    });
+  });
+
   it('#6 — rescheduling into an occupied slot maps the DB exclusion-constraint error to the friendly message', async () => {
     const existingAppointmentId = 'apt-being-rescheduled';
     const { controller, fakeClient } = await buildController(

@@ -100,6 +100,10 @@ export class PushDeliveryService {
       data: { ...data, screen: data.screen ?? 'Notifications' },
       sound: 'default',
       channelId: 'default',
+      // Expo maps this to FCM priority (Android) and apns-priority (iOS) — without it, both
+      // default to normal priority, which either platform can delay or batch. A user-visible
+      // alert like this one needs immediate/high delivery.
+      priority: 'high',
     }));
 
     await this.sendExpoBatch(messages, (tokens as { id: string }[]).map((t) => t.id));
@@ -181,6 +185,7 @@ export class PushDeliveryService {
         data: payload,
         sound: 'default',
         channelId: 'default',
+        priority: 'high',
       }));
       const ids = slice.map(([, id]) => id);
       await this.sendExpoBatch(messages, ids);

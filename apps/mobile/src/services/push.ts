@@ -131,9 +131,12 @@ export function ensurePushInfrastructure(): void {
       },
     });
     if (Platform.OS === 'android') {
+      // HIGH is required for a heads-up pop-over and reliable lock-screen display — DEFAULT
+      // delivers to the shade but skips the heads-up banner, and vendor notification managers
+      // (Samsung One UI in particular) tend to further deprioritize DEFAULT-importance channels.
       void Notifications.setNotificationChannelAsync('default', {
         name: 'default',
-        importance: Notifications.AndroidImportance.DEFAULT,
+        importance: Notifications.AndroidImportance.HIGH,
       });
     }
   }

@@ -11,7 +11,7 @@
  */
 export type AddAppointmentRoute = {
   screen: 'AdminStaffSchedule';
-  params: { staffId?: string; date: string; returnTo: 'Dashboard' };
+  params: { staffId?: string; date: string; returnTo: 'Dashboard'; mode: 'add' };
 } | null;
 
 /** `null` only when there is truly no staff to book against yet (e.g. brand-new shop, no staff added). */
@@ -21,5 +21,5 @@ export function buildAddAppointmentRoute(
 ): AddAppointmentRoute {
   if (staffList.length === 0) return null;
   const staffId = staffList.length === 1 ? staffList[0].id : undefined;
-  return { screen: 'AdminStaffSchedule', params: { staffId, date: todayDateStr, returnTo: 'Dashboard' } };
+  return { screen: 'AdminStaffSchedule', params: { staffId, date: todayDateStr, returnTo: 'Dashboard', mode: 'add' } };
 }

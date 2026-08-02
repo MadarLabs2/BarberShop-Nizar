@@ -147,7 +147,9 @@ export class WaitlistService {
     const endTime = dayRow.end_time ? String(dayRow.end_time).slice(0, 5) : '19:00';
     const startMins = timeToMins(startTime);
     const endMins = timeToMins(endTime);
-    if (startMins >= endMins || duration > endMins - startMins) {
+    /** Closing time is the last valid *start*, not the last valid finish — matches
+     * computeAvailableSlots in bookings.ts. */
+    if (startMins >= endMins) {
       return { count: 0, isNotWorkDay: false };
     }
 
@@ -182,7 +184,7 @@ export class WaitlistService {
 
     let count = 0;
     let mins = startMins;
-    while (mins + duration <= endMins) {
+    while (mins <= endMins) {
       if (isToday && mins <= nowMins) {
         mins += duration;
         continue;
@@ -252,7 +254,9 @@ export class WaitlistService {
     const endTime = dayRow.end_time ? String(dayRow.end_time).slice(0, 5) : '19:00';
     const startMins = timeToMins(startTime);
     const endMins = timeToMins(endTime);
-    if (startMins >= endMins || duration > endMins - startMins) {
+    /** Closing time is the last valid *start*, not the last valid finish — matches
+     * computeAvailableSlots in bookings.ts. */
+    if (startMins >= endMins) {
       return [];
     }
 
@@ -287,7 +291,7 @@ export class WaitlistService {
 
     const times: string[] = [];
     let mins = startMins;
-    while (mins + duration <= endMins) {
+    while (mins <= endMins) {
       if (isToday && mins <= nowMins) {
         mins += duration;
         continue;

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
   AppState,
   InteractionManager,
   Platform,
+  DeviceEventEmitter,
   type AppStateStatus,
   type LayoutChangeEvent,
   type ListRenderItemInfo,
@@ -45,6 +46,7 @@ import {
 import { prefetchAdminHeavyData } from '../../services/adminPrefetchCache';
 import { prefetchStaffDashboardData } from '../../services/staffPrefetchCache';
 import { prefetchCustomerTabData } from '../../services/customerPrefetchCache';
+import { PUSH_NOTIFICATION_RECEIVED_EVENT } from '../../services/push';
 import { useShopBranch } from '../../hooks/useShopBranch';
 import { useNotifications } from '../../contexts/NotificationsContext';
 import type { AppointmentDto, CatalogProduct, WaitlistSlotOffer } from '../../services/bookings.api';
@@ -81,7 +83,9 @@ const VIDEO_HEIGHT = 260;
 const NOTICE_SLIDE_IN_MS = 340;
 /** Slide up off screen: ease-in so it accelerates smoothly upward. */
 const NOTICE_SLIDE_OUT_MS = 300;
-const HOME_FOCUS_SYNC_MIN_INTERVAL_MS = 45_000;
+/** Foreground poll cadence for waitlist-offer visibility while Home is focused — see the effect
+ * below for why this can't rely on push delivery alone. */
+const WAITLIST_OFFERS_POLL_MS = 5_000;
 
 function isWaitlistSlotLostRaceMessage(msg: string): boolean {
   return (
@@ -485,7 +489,6 @@ export function HomeScreen() {
   const [waitlistOffers, setWaitlistOffers] = useState<WaitlistSlotOffer[]>([]);
   /** Admin-editable shop info (address/phone/email/Instagram) — first active branch, kept in sync via customer prefetch cache. */
   const shopBranch = useShopBranch();
-  const lastFocusSyncAtRef = useRef(0);
   const riseY = useSharedValue(14);
   const riseOp = useSharedValue(0);
   const riseStyle = useAnimatedStyle(() => ({
@@ -507,25 +510,57 @@ export function HomeScreen() {
     }, [riseY, riseOp]),
   );
 
+  /**
+   * Freed-slot offers need to appear as close to instantly as possible — this is a "first to
+   * confirm wins" race between customers, so lateness has a real cost. Push delivery (APNs/FCM)
+   * is best-effort and outside the app's control — it can lag or occasionally not arrive at all —
+   * so it can't be the only mechanism. Two layers:
+   *  1. While Home is focused: fetch once immediately, then poll every few seconds — a hard
+   *     ceiling on latency whenever the customer is actually looking at this screen, independent
+   *     of whether any push ever arrives. Paused while the app is backgrounded (checked per tick,
+   *     cheap) so it doesn't burn battery/network for a screen nobody can see.
+   *  2. From anywhere else in the app: the push listener below reacts the instant a freed-slot
+   *     notification lands, so the card is already correct if/when the customer comes back to
+   *     Home — it just can't be the *only* path given push timing isn't guaranteed.
+   */
   useFocusEffect(
     useCallback(() => {
-      // Run AFTER the drawer slide-in animation finishes so the JS thread is free.
-      // setTimeout(350) used to fire right at the animation peak — InteractionManager is safer.
-      const handle = InteractionManager.runAfterInteractions(() => {
-        const now = Date.now();
-        if (now - lastFocusSyncAtRef.current < HOME_FOCUS_SYNC_MIN_INTERVAL_MS) return;
-        lastFocusSyncAtRef.current = now;
-        if (token) {
-          getPendingWaitlistOffers(token)
-            .then(setWaitlistOffers)
-            .catch(() => setWaitlistOffers([]));
-        } else {
-          setWaitlistOffers([]);
-        }
-      });
-      return () => handle.cancel();
+      if (!token) {
+        setWaitlistOffers([]);
+        return;
+      }
+      let cancelled = false;
+      const poll = () => {
+        if (cancelled || AppState.currentState !== 'active') return;
+        getPendingWaitlistOffers(token)
+          .then((next) => {
+            if (!cancelled) setWaitlistOffers(next);
+          })
+          .catch(() => undefined);
+      };
+      const handle = InteractionManager.runAfterInteractions(poll);
+      const intervalId = setInterval(poll, WAITLIST_OFFERS_POLL_MS);
+      return () => {
+        cancelled = true;
+        handle.cancel();
+        clearInterval(intervalId);
+      };
     }, [token])
   );
+
+  /** A freed-slot push can arrive while the customer is on a different screen — Home stays
+   * mounted across drawer navigation, so this still fires and the card is already correct by the
+   * time they come back. Mirrors NotificationsContext's same-event listener. */
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(PUSH_NOTIFICATION_RECEIVED_EVENT, (notification) => {
+      const data = notification?.request?.content?.data as Record<string, unknown> | undefined;
+      if (typeof data?.waitlistOfferId !== 'string' || !token) return;
+      getPendingWaitlistOffers(token)
+        .then(setWaitlistOffers)
+        .catch(() => undefined);
+    });
+    return () => sub.remove();
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;

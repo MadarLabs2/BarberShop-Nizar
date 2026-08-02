@@ -212,7 +212,10 @@ export class BookingsController {
     const endTime = dayRow.end_time ? String(dayRow.end_time).slice(0, 5) : '19:00';
     const startMins = timeToMins(startTime);
     const endMins = timeToMins(endTime);
-    if (startMins >= endMins || duration > endMins - startMins) {
+    /** Closing time is the last valid *start*, not the last valid finish — a client can start a
+     * service right up to close even if it runs past it. Only an empty/inverted window blocks
+     * everything outright. */
+    if (startMins >= endMins) {
       return { slots: [], isNotWorkDay: false };
     }
 
@@ -254,7 +257,7 @@ export class BookingsController {
     const slots: string[] = [];
     let mins = startMins;
 
-    while (mins + duration <= endMins) {
+    while (mins <= endMins) {
       if (isToday && mins <= nowMins) {
         mins += duration;
         continue;
@@ -500,7 +503,9 @@ export class BookingsController {
     if (slotMins < startMins) {
       throw new BadRequestException('השעה שבחרת מוקדמת משעות העבודה של איש הצוות');
     }
-    if (slotMins + svc.duration > endMins) {
+    /** Closing time is the last valid *start*, not the last valid finish — matches
+     * computeAvailableSlots, which already offers slots up through closing time itself. */
+    if (slotMins > endMins) {
       throw new BadRequestException('השעה שבחרת חורגת משעות העבודה של איש הצוות');
     }
 

@@ -54,6 +54,7 @@ import { openDrawer } from '../../utils/nav';
 import {
   getDateRangeFromToday,
   getNextDays,
+  getTodayDateString,
   toDateString,
   formatIsoDateDmy,
   getWeekdayNameForYyyyMmDd,
@@ -200,9 +201,13 @@ export function AdminStaffScheduleScreen() {
   const route = useRoute<{
     key: string;
     name: string;
-    params?: { staffId?: string; date?: string; returnTo?: keyof RootDrawerParamList };
+    params?: { staffId?: string; date?: string; returnTo?: keyof RootDrawerParamList; mode?: 'add' };
   }>();
   const { token, role } = useAuth();
+  /** "Add appointment" (dashboard row) opens the full walk-in booking flow — free-slot timeline +
+   * inline add-panel. Plain "לוח זמנים" (Schedule card) is browse-only: it must keep showing just
+   * the day's existing appointments, unchanged from how it always has, with today front and center. */
+  const isAddMode = route.params?.mode === 'add';
   const warmChips = getWarmStaffChipsForSchedule();
   /** `staffId` present-but-undefined (from the dashboard's "Add appointment" row when there's more
    * than one staff member) is a deliberate "let the admin choose" signal — distinct from the key
@@ -229,8 +234,11 @@ export function AdminStaffScheduleScreen() {
     return getCachedSchedule(initialSid, from, to) === undefined;
   });
   const [refreshing, setRefreshing] = useState(false);
-  /** Only one day expanded at a time — keeps a 2-week list scannable. */
-  const [expandedDate, setExpandedDate] = useState<string | null>(route.params?.date ?? null);
+  /** Only one day expanded at a time — keeps a 2-week list scannable. In browse mode (לוח זמנים),
+   * today opens by default so the admin immediately sees the current day's appointments. */
+  const [expandedDate, setExpandedDate] = useState<string | null>(
+    route.params?.date ?? (isAddMode ? null : getTodayDateString())
+  );
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   /** Which day's add-panel is open (null = closed). Only one at a time, always inside its own expanded day. */
@@ -249,6 +257,9 @@ export function AdminStaffScheduleScreen() {
 
   const { from, to } = useMemo(() => getDateRangeFromToday(14), []);
   const allDates = useMemo(() => getNextDays(14).map(toDateString), []);
+  /** Browse mode (לוח זמנים) only ever shows today — the 2-week spread stays exclusive to the
+   * "Add appointment" walk-in flow, which needs it to book ahead. */
+  const displayDates = isAddMode ? allDates : allDates.slice(0, 1);
 
   const scheduleReqId = useRef(0);
 
@@ -355,8 +366,9 @@ export function AdminStaffScheduleScreen() {
   }, [selectedStaffId, loadSchedule]);
 
   useEffect(() => {
-    setExpandedDate(null);
+    setExpandedDate(isAddMode ? null : getTodayDateString());
     setPanelDate(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStaffId]);
 
   useEffect(() => {
@@ -575,7 +587,9 @@ export function AdminStaffScheduleScreen() {
 
         {selectedStaff && (
           <Text style={styles.subtitle}>
-            {t('admin.scheduleSubtitle', { name: selectedStaff.name, from: formatIsoDateDmy(from), to: formatIsoDateDmy(to) })}
+            {isAddMode
+              ? t('admin.scheduleSubtitle', { name: selectedStaff.name, from: formatIsoDateDmy(from), to: formatIsoDateDmy(to) })
+              : t('admin.scheduleSubtitleToday', { name: selectedStaff.name, date: formatIsoDateDmy(displayDates[0]) })}
           </Text>
         )}
 
@@ -586,7 +600,7 @@ export function AdminStaffScheduleScreen() {
             <LoadingState />
           </View>
         ) : (
-          allDates.map((dateStr) => {
+          displayDates.map((dateStr) => {
             const dayApts = byDate.get(dateStr) || [];
             const expanded = expandedDate === dateStr;
             const weekday = getWeekdayNameForYyyyMmDd(dateStr, localeTag);
@@ -615,7 +629,7 @@ export function AdminStaffScheduleScreen() {
                       <Text style={[styles.dayDate, !isWorkDay && styles.dayTextMuted]}>{dateDmy}</Text>
                     </View>
                     <View style={styles.dayHeaderActions}>
-                      {isWorkDay ? (
+                      {isAddMode && isWorkDay ? (
                         <TouchableOpacity
                           style={styles.dayAddBtn}
                           onPress={() => openPanel(dateStr)}
@@ -644,7 +658,7 @@ export function AdminStaffScheduleScreen() {
                       entering={Platform.OS === 'android' ? FadeIn.duration(180) : undefined}
                       exiting={Platform.OS === 'android' ? FadeOut.duration(150) : undefined}
                     >
-                      {!isWorkDay ? (
+                      {!isAddMode || !isWorkDay ? (
                         dayApts.length > 0 ? (
                           dayApts.map((apt) => (
                             <Keyed key={apt.id}>
@@ -652,7 +666,9 @@ export function AdminStaffScheduleScreen() {
                             </Keyed>
                           ))
                         ) : (
-                          <Text style={styles.notWorkDayText}>{t('admin.timelineNotWorkDay')}</Text>
+                          <Text style={styles.notWorkDayText}>
+                            {t(isAddMode || !isWorkDay ? 'admin.timelineNotWorkDay' : 'admin.dayNoAppointments')}
+                          </Text>
                         )
                       ) : (
                         (segments ?? []).map((seg, idx) => (
@@ -666,7 +682,7 @@ export function AdminStaffScheduleScreen() {
                         ))
                       )}
 
-                      {panelDate === dateStr ? (
+                      {isAddMode && panelDate === dateStr ? (
                         <Animated.View
                           ref={panelRef}
                           style={styles.panel}
