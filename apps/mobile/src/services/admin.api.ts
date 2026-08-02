@@ -542,7 +542,11 @@ export async function cancelStaffWaitlistEntry(token: string, id: string): Promi
 export type AdminProduct = {
   id: string;
   name: string;
+  nameHe: string;
+  nameAr: string;
   description: string | null;
+  descriptionHe: string | null;
+  descriptionAr: string | null;
   price: number;
   salePrice: number | null;
   imageUrl: string | null;
@@ -560,8 +564,10 @@ export async function getAdminProducts(token: string): Promise<AdminProduct[]> {
 export async function createProduct(
   token: string,
   dto: {
-    name: string;
-    description?: string;
+    nameHe: string;
+    nameAr: string;
+    descriptionHe?: string;
+    descriptionAr?: string;
     price: number;
     salePrice?: number | null;
     imageUrl?: string;
@@ -580,8 +586,10 @@ export async function updateProduct(
   token: string,
   id: string,
   dto: {
-    name?: string;
-    description?: string;
+    nameHe?: string;
+    nameAr?: string;
+    descriptionHe?: string;
+    descriptionAr?: string;
     price?: number;
     salePrice?: number | null;
     imageUrl?: string | null;

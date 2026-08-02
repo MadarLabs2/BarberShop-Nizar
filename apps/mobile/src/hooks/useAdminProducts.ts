@@ -45,8 +45,10 @@ function peekAdminProductsWarm(): ProductsWarm | null {
 }
 
 export type ProductFormState = {
-  name: string;
-  description: string;
+  nameHe: string;
+  nameAr: string;
+  descriptionHe: string;
+  descriptionAr: string;
   price: string;
   /** Empty = no sale (create) or clear sale (update when submitted empty). */
   salePrice: string;
@@ -57,8 +59,10 @@ export type ProductFormState = {
 };
 
 const emptyForm = (): ProductFormState => ({
-  name: '',
-  description: '',
+  nameHe: '',
+  nameAr: '',
+  descriptionHe: '',
+  descriptionAr: '',
   price: '',
   salePrice: '',
   imageUrl: '',
@@ -128,8 +132,10 @@ export function useAdminProducts(token: string | null) {
   const openEdit = useCallback((p: AdminProduct) => {
     setEditItem(p);
     setForm({
-      name: p.name,
-      description: p.description ?? '',
+      nameHe: p.nameHe,
+      nameAr: p.nameAr,
+      descriptionHe: p.descriptionHe ?? '',
+      descriptionAr: p.descriptionAr ?? '',
       price: String(p.price),
       salePrice: p.salePrice != null ? String(p.salePrice) : '',
       imageUrl: p.imageUrl ?? '',
@@ -147,8 +153,10 @@ export function useAdminProducts(token: string | null) {
 
   const handleSave = useCallback(
     async (parsed: {
-      name: string;
-      description?: string;
+      nameHe: string;
+      nameAr: string;
+      descriptionHe?: string;
+      descriptionAr?: string;
       price: number;
       /** Create: undefined = no sale. Update: null clears sale. */
       salePrice?: number | null;
@@ -170,8 +178,12 @@ export function useAdminProducts(token: string | null) {
               x.id === editItem.id
                 ? {
                     ...x,
-                    name: parsed.name,
-                    description: parsed.description ?? null,
+                    name: parsed.nameHe,
+                    nameHe: parsed.nameHe,
+                    nameAr: parsed.nameAr,
+                    description: parsed.descriptionHe ?? null,
+                    descriptionHe: parsed.descriptionHe ?? null,
+                    descriptionAr: parsed.descriptionAr ?? null,
                     price: parsed.price,
                     salePrice:
                       parsed.salePrice === undefined
@@ -191,8 +203,10 @@ export function useAdminProducts(token: string | null) {
           });
           closeModal();
           const patch: Parameters<typeof updateProduct>[2] = {
-            name: parsed.name,
-            description: parsed.description,
+            nameHe: parsed.nameHe,
+            nameAr: parsed.nameAr,
+            descriptionHe: parsed.descriptionHe,
+            descriptionAr: parsed.descriptionAr,
             price: parsed.price,
             category: parsed.category,
             stockQuantity: parsed.stockQuantity,
@@ -208,8 +222,12 @@ export function useAdminProducts(token: string | null) {
           const tempId = `temp-${Date.now()}`;
           const optimistic: AdminProduct = {
             id: tempId,
-            name: parsed.name,
-            description: parsed.description ?? null,
+            name: parsed.nameHe,
+            nameHe: parsed.nameHe,
+            nameAr: parsed.nameAr,
+            description: parsed.descriptionHe ?? null,
+            descriptionHe: parsed.descriptionHe ?? null,
+            descriptionAr: parsed.descriptionAr ?? null,
             price: parsed.price,
             salePrice:
               parsed.salePrice != null && parsed.salePrice < parsed.price ? parsed.salePrice : null,
@@ -226,8 +244,10 @@ export function useAdminProducts(token: string | null) {
           });
           closeModal();
           const created = await createProduct(token, {
-            name: parsed.name,
-            description: parsed.description,
+            nameHe: parsed.nameHe,
+            nameAr: parsed.nameAr,
+            descriptionHe: parsed.descriptionHe,
+            descriptionAr: parsed.descriptionAr,
             price: parsed.price,
             ...(parsed.salePrice != null && parsed.salePrice < parsed.price ? { salePrice: parsed.salePrice } : {}),
             ...(parsed.imageUrl != null && parsed.imageUrl !== '' ? { imageUrl: parsed.imageUrl } : {}),

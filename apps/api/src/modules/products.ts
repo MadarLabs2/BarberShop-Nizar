@@ -30,7 +30,11 @@ import { AuthModule } from '../auth';
 export type ProductPublicDto = {
   id: string;
   name: string;
+  nameHe: string;
+  nameAr: string;
   description: string | null;
+  descriptionHe: string | null;
+  descriptionAr: string | null;
   price: number;
   /** Set when on sale (less than `price`). */
   salePrice: number | null;
@@ -51,7 +55,11 @@ export type ProductAdminDto = ProductPublicDto & {
 type ProductRow = {
   id: string;
   name: string;
+  name_he: string;
+  name_ar: string;
   description: string | null;
+  description_he: string | null;
+  description_ar: string | null;
   price: number;
   sale_price?: number | null;
   image_url: string | null;
@@ -75,9 +83,9 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const TTL_CATALOG_PRODUCTS = 300;
 
 const PRODUCT_PUBLIC_SELECT =
-  'id, name, description, price, sale_price, image_url, category, stock_quantity, is_active, created_at, updated_at, staff_id';
+  'id, name, name_he, name_ar, description, description_he, description_ar, price, sale_price, image_url, category, stock_quantity, is_active, created_at, updated_at, staff_id';
 const PRODUCT_PUBLIC_SELECT_WITH_STAFF =
-  'id, name, description, price, sale_price, image_url, category, stock_quantity, is_active, created_at, updated_at, staff_id, staff(name)' as const;
+  'id, name, name_he, name_ar, description, description_he, description_ar, price, sale_price, image_url, category, stock_quantity, is_active, created_at, updated_at, staff_id, staff(name)' as const;
 
 function effectiveSalePrice(price: number, saleRaw: number | null | undefined): number | null {
   if (saleRaw == null || price <= 0) return null;
@@ -96,7 +104,7 @@ function normalizeSalePriceForDb(price: number, saleInput: number): number {
 }
 
 const ADMIN_ROW_SELECT =
-  'id, name, description, price, sale_price, image_url, category, stock_quantity, is_active, created_at, updated_at, staff_id';
+  'id, name, name_he, name_ar, description, description_he, description_ar, price, sale_price, image_url, category, stock_quantity, is_active, created_at, updated_at, staff_id';
 
 function extFromMime(mimetype: string): string {
   if (mimetype === 'image/png') return 'png';
@@ -146,7 +154,11 @@ export class ProductsService {
     return {
       id: r.id,
       name: r.name,
+      nameHe: r.name_he,
+      nameAr: r.name_ar,
       description: r.description ?? null,
+      descriptionHe: r.description_he ?? null,
+      descriptionAr: r.description_ar ?? null,
       price: r.price,
       salePrice: effectiveSalePrice(r.price, r.sale_price ?? null),
       imageUrl: r.image_url ?? null,
@@ -163,7 +175,11 @@ export class ProductsService {
     return {
       id: r.id,
       name: r.name,
+      nameHe: r.name_he,
+      nameAr: r.name_ar,
       description: r.description ?? null,
+      descriptionHe: r.description_he ?? null,
+      descriptionAr: r.description_ar ?? null,
       price,
       salePrice: raw != null && raw >= 0 && price > 0 && raw < price ? Math.floor(Number(raw)) : null,
       imageUrl: r.image_url ?? null,
@@ -268,15 +284,20 @@ export class ProductsService {
   }
 
   async create(dto: {
-    name: string;
-    description?: string;
+    nameHe: string;
+    nameAr: string;
+    descriptionHe?: string;
+    descriptionAr?: string;
     price: number;
     salePrice?: number | null;
     imageUrl?: string;
     category?: string;
     stockQuantity?: number;
   }): Promise<ProductAdminDto> {
-    if (!dto.name?.trim()) throw new BadRequestException('Name required');
+    const nameHe = dto.nameHe?.trim();
+    const nameAr = dto.nameAr?.trim();
+    if (!nameHe) throw new BadRequestException('שם בעברית נדרש');
+    if (!nameAr) throw new BadRequestException('שם בערבית נדרש');
     const price = Math.max(0, Math.floor(Number(dto.price) || 0));
     const stockQuantity = Math.max(0, Math.floor(Number(dto.stockQuantity ?? 0)));
     let sale_price: number | null = null;
@@ -287,8 +308,12 @@ export class ProductsService {
       .getClient()
       .from('products')
       .insert({
-        name: dto.name.trim(),
-        description: dto.description?.trim() || null,
+        name: nameHe,
+        name_he: nameHe,
+        name_ar: nameAr,
+        description: dto.descriptionHe?.trim() || null,
+        description_he: dto.descriptionHe?.trim() || null,
+        description_ar: dto.descriptionAr?.trim() || null,
         price,
         sale_price,
         image_url: dto.imageUrl?.trim() || null,
@@ -306,8 +331,10 @@ export class ProductsService {
   async update(
     id: string,
     dto: {
-      name?: string;
-      description?: string;
+      nameHe?: string;
+      nameAr?: string;
+      descriptionHe?: string;
+      descriptionAr?: string;
       price?: number;
       salePrice?: number | null;
       imageUrl?: string;
@@ -318,8 +345,23 @@ export class ProductsService {
   ): Promise<ProductAdminDto> {
     const client = this.supabase.getClient();
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (dto.name !== undefined) updates.name = dto.name.trim();
-    if (dto.description !== undefined) updates.description = dto.description?.trim() || null;
+    if (dto.nameHe !== undefined) {
+      const nameHe = dto.nameHe.trim();
+      if (!nameHe) throw new BadRequestException('שם בעברית נדרש');
+      updates.name_he = nameHe;
+      updates.name = nameHe;
+    }
+    if (dto.nameAr !== undefined) {
+      const nameAr = dto.nameAr.trim();
+      if (!nameAr) throw new BadRequestException('שם בערבית נדרש');
+      updates.name_ar = nameAr;
+    }
+    if (dto.descriptionHe !== undefined) {
+      const descHe = dto.descriptionHe?.trim() || null;
+      updates.description_he = descHe;
+      updates.description = descHe;
+    }
+    if (dto.descriptionAr !== undefined) updates.description_ar = dto.descriptionAr?.trim() || null;
     if (dto.price !== undefined) updates.price = Math.max(0, Math.floor(Number(dto.price)));
     if (dto.imageUrl !== undefined) updates.image_url = dto.imageUrl?.trim() || null;
     if (dto.category !== undefined) updates.category = dto.category?.trim() || null;
@@ -415,6 +457,13 @@ export class ProductsService {
     return (data || []).map((r: ProductRow) => this.mapAdmin({ ...r, staff: null }));
   }
 
+  /**
+   * Staff's own product listing — kept single-language in the UI (out of scope: the admin
+   * dashboard is where the bilingual name/description fields were requested). `name_he`/`name_ar`
+   * are still NOT NULL at the DB level though, so this mirrors the one name/description a staff
+   * member enters into both columns — same "no auto-translation, just a safe placeholder" mirror
+   * pattern the admin backfill migration uses, not a second real localization UI.
+   */
   async createStaffProduct(
     staffId: string,
     dto: {
@@ -427,14 +476,20 @@ export class ProductsService {
     },
   ): Promise<ProductAdminDto> {
     if (!dto.name?.trim()) throw new BadRequestException('Name required');
+    const name = dto.name.trim();
+    const description = dto.description?.trim() || null;
     const price = Math.max(0, Math.floor(Number(dto.price) || 0));
     const stockQuantity = Math.max(0, Math.floor(Number(dto.stockQuantity ?? 0)));
     const { data, error } = await this.supabase
       .getClient()
       .from('products')
       .insert({
-        name: dto.name.trim(),
-        description: dto.description?.trim() || null,
+        name,
+        name_he: name,
+        name_ar: name,
+        description,
+        description_he: description,
+        description_ar: description,
         price,
         image_url: dto.imageUrl?.trim() || null,
         category: dto.category?.trim() || null,
@@ -461,8 +516,18 @@ export class ProductsService {
     },
   ): Promise<ProductAdminDto> {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (dto.name !== undefined) updates.name = dto.name.trim();
-    if (dto.description !== undefined) updates.description = dto.description?.trim() || null;
+    if (dto.name !== undefined) {
+      const name = dto.name.trim();
+      updates.name = name;
+      updates.name_he = name;
+      updates.name_ar = name;
+    }
+    if (dto.description !== undefined) {
+      const description = dto.description?.trim() || null;
+      updates.description = description;
+      updates.description_he = description;
+      updates.description_ar = description;
+    }
     if (dto.price !== undefined) updates.price = Math.max(0, Math.floor(Number(dto.price)));
     if (dto.imageUrl !== undefined) updates.image_url = dto.imageUrl?.trim() || null;
     if (dto.category !== undefined) updates.category = dto.category?.trim() || null;
@@ -578,8 +643,10 @@ export class AdminProductsController {
   create(
     @Body()
     dto: {
-      name: string;
-      description?: string;
+      nameHe: string;
+      nameAr: string;
+      descriptionHe?: string;
+      descriptionAr?: string;
       price: number;
       salePrice?: number | null;
       imageUrl?: string;
@@ -596,8 +663,10 @@ export class AdminProductsController {
     @Param('id') id: string,
     @Body()
     dto: {
-      name?: string;
-      description?: string;
+      nameHe?: string;
+      nameAr?: string;
+      descriptionHe?: string;
+      descriptionAr?: string;
       price?: number;
       salePrice?: number | null;
       imageUrl?: string;

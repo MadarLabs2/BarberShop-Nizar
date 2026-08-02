@@ -39,7 +39,7 @@ import { prepareImageForUpload } from '../../utils/imageUpload';
 import { colors, spacing, typography, radius, shadows, textStyles, iconSize, layout } from '../../theme';
 import { canAccessAdmin } from '../../lib/navigation.roles';
 
-type FieldKey = 'name' | 'description' | 'price' | 'category' | 'stock';
+type FieldKey = 'nameHe' | 'nameAr' | 'descriptionHe' | 'descriptionAr' | 'price' | 'category' | 'stock';
 
 export function AdminProductsScreen() {
   const { t } = useTranslation();
@@ -131,9 +131,14 @@ export function AdminProductsScreen() {
 
   const submit = async () => {
     if (!token) return;
-    const nameResult = validateName(p.form.name, t('admin.validateProductName'));
-    if (!nameResult.valid) {
-      Alert.alert(t('admin.error'), nameResult.error);
+    const nameHeResult = validateName(p.form.nameHe, t('admin.nameHePh'));
+    if (!nameHeResult.valid) {
+      Alert.alert(t('admin.error'), nameHeResult.error);
+      return;
+    }
+    const nameArResult = validateName(p.form.nameAr, t('admin.nameArPh'));
+    if (!nameArResult.valid) {
+      Alert.alert(t('admin.error'), nameArResult.error);
       return;
     }
     const priceResult = validateServicePrice(p.form.price);
@@ -189,8 +194,10 @@ export function AdminProductsScreen() {
 
     Keyboard.dismiss();
     const r = await p.handleSave({
-      name: p.form.name.trim(),
-      description: p.form.description.trim() || undefined,
+      nameHe: p.form.nameHe.trim(),
+      nameAr: p.form.nameAr.trim(),
+      descriptionHe: p.form.descriptionHe.trim() || undefined,
+      descriptionAr: p.form.descriptionAr.trim() || undefined,
       price,
       ...(p.editItem ? { salePrice: salePrice as number | null } : {}),
       ...(!p.editItem && salePrice !== undefined ? { salePrice } : {}),
@@ -246,7 +253,8 @@ export function AdminProductsScreen() {
             <Keyed key={item.id}>
               <View style={[styles.card, !item.isActive && styles.cardInactive]}>
                 <View style={styles.cardMain}>
-                  <Text style={styles.cardTitle}>{item.name}</Text>
+                  <Text style={styles.cardTitle}>{item.nameHe}</Text>
+                  <Text style={styles.cardMeta}>{item.nameAr}</Text>
                   {item.category ? <Text style={styles.cardMeta}>{item.category}</Text> : null}
                   <Text style={styles.cardMeta}>
                     {item.salePrice != null && item.salePrice < item.price
@@ -337,24 +345,47 @@ export function AdminProductsScreen() {
 
                 <Text style={styles.sectionLabel}>{t('admin.sectionNameDesc')}</Text>
                 <TextInput
-                  style={inputStyle('name')}
-                  value={p.form.name}
-                  onChangeText={(v) => p.setForm((f) => ({ ...f, name: v }))}
-                  placeholder={t('admin.productNamePh')}
+                  style={inputStyle('nameHe')}
+                  value={p.form.nameHe}
+                  onChangeText={(v) => p.setForm((f) => ({ ...f, nameHe: v }))}
+                  placeholder={t('admin.nameHePh')}
                   placeholderTextColor={colors.textTertiary}
-                  onFocus={() => setFocusedField('name')}
+                  onFocus={() => setFocusedField('nameHe')}
                   onBlur={() => setFocusedField(null)}
                   textAlign="right"
                   returnKeyType="next"
                 />
                 <TextInput
-                  style={[inputStyle('description'), styles.inputMultiline]}
-                  value={p.form.description}
-                  onChangeText={(v) => p.setForm((f) => ({ ...f, description: v }))}
-                  placeholder={t('admin.productDescPh')}
+                  style={inputStyle('nameAr')}
+                  value={p.form.nameAr}
+                  onChangeText={(v) => p.setForm((f) => ({ ...f, nameAr: v }))}
+                  placeholder={t('admin.nameArPh')}
+                  placeholderTextColor={colors.textTertiary}
+                  onFocus={() => setFocusedField('nameAr')}
+                  onBlur={() => setFocusedField(null)}
+                  textAlign="right"
+                  returnKeyType="next"
+                />
+                <TextInput
+                  style={[inputStyle('descriptionHe'), styles.inputMultiline]}
+                  value={p.form.descriptionHe}
+                  onChangeText={(v) => p.setForm((f) => ({ ...f, descriptionHe: v }))}
+                  placeholder={t('admin.descriptionHePh')}
                   placeholderTextColor={colors.textTertiary}
                   multiline
-                  onFocus={() => setFocusedField('description')}
+                  onFocus={() => setFocusedField('descriptionHe')}
+                  onBlur={() => setFocusedField(null)}
+                  textAlign="right"
+                  textAlignVertical="top"
+                />
+                <TextInput
+                  style={[inputStyle('descriptionAr'), styles.inputMultiline]}
+                  value={p.form.descriptionAr}
+                  onChangeText={(v) => p.setForm((f) => ({ ...f, descriptionAr: v }))}
+                  placeholder={t('admin.descriptionArPh')}
+                  placeholderTextColor={colors.textTertiary}
+                  multiline
+                  onFocus={() => setFocusedField('descriptionAr')}
                   onBlur={() => setFocusedField(null)}
                   textAlign="right"
                   textAlignVertical="top"

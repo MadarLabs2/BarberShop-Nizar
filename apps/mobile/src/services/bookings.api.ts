@@ -70,7 +70,11 @@ export async function fetchStaffBookingContext(staffId: string): Promise<StaffBo
 export type CatalogProduct = {
   id: string;
   name: string;
+  nameHe: string;
+  nameAr: string;
   description: string | null;
+  descriptionHe: string | null;
+  descriptionAr: string | null;
   price: number;
   /** When set and below `price`, product is on sale (API-validated). */
   salePrice?: number | null;

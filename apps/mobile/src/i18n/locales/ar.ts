@@ -518,6 +518,8 @@ export const ar: TranslationTree = {
     productNew: 'منتج جديد',
     productNamePh: 'اسم المنتج',
     productDescPh: 'وصف قصير (اختياري)',
+    descriptionHePh: 'الوصف بالعبرية (اختياري)',
+    descriptionArPh: 'الوصف بالعربية (اختياري)',
     categoryPh: 'مثال: العناية',
     deleteProductTitle: 'حذف منتج',
     deleteProductMsg: 'حذف "{{name}}" نهائياً؟ لا يمكن التراجع.',

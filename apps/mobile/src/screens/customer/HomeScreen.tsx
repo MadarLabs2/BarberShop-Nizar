@@ -226,10 +226,14 @@ function ProductDetailSheet({
   onWhatsApp: () => void;
 }) {
   const { t } = useTranslation();
+  const { locale } = useAppLocale();
   const sheetInsets = useSafeAreaInsets();
   if (!product) return null;
   const hasRemoteImage = Boolean(imageUri && /^https?:\/\//i.test(imageUri));
-  const desc = product.description?.trim();
+  const displayName = pickLocalizedName(product, locale);
+  const descHe = product.descriptionHe?.trim();
+  const descAr = product.descriptionAr?.trim();
+  const desc = (locale === 'ar' ? descAr || descHe : descHe || descAr) || product.description?.trim();
   const isBarber = Boolean(product.staffId);
   const outOfStock = product.stockQuantity <= 0;
   const onSale = product.salePrice != null && product.price > 0 && product.salePrice < product.price;
@@ -299,7 +303,7 @@ function ProductDetailSheet({
               ) : null}
             </View>
 
-            <Text style={homeStyles.productSheetTitle}>{product.name}</Text>
+            <Text style={homeStyles.productSheetTitle}>{displayName}</Text>
 
             <View style={homeStyles.productSheetMetaRow}>
               <View style={homeStyles.productSheetPriceCol}>
@@ -969,7 +973,7 @@ export function HomeScreen() {
         }
         onClose={() => setProductDetailFor(null)}
         onWhatsApp={() => {
-          if (productDetailFor) openProductWhatsApp(productDetailFor.name);
+          if (productDetailFor) openProductWhatsApp(pickLocalizedName(productDetailFor, locale));
         }}
       />
     </View>

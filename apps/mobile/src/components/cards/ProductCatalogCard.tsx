@@ -19,6 +19,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import type { CatalogProduct } from '../../services/bookings.api';
+import { pickLocalizedName, useAppLocale } from '../../contexts/LocaleContext';
 import { colors, spacing, radius, textStyles, shadows } from '../../theme';
 
 /** Compact shelf tile — image fades into white body (RTL-first). */
@@ -54,6 +55,8 @@ export function ProductCatalogCard({
   onCardPress,
 }: ProductCatalogCardProps) {
   const { t } = useTranslation();
+  const { locale } = useAppLocale();
+  const displayName = pickLocalizedName(product, locale);
   const outOfStock = product.stockQuantity <= 0;
   const isBarber = Boolean(product.staffId);
   const hasPhoto = Boolean(imageUri && /^https?:\/\//i.test(imageUri));
@@ -110,7 +113,7 @@ export function ProductCatalogCard({
             onPressOut={onCardPressOut}
             style={styles.cardTap}
             accessibilityRole="button"
-            accessibilityLabel={`${product.name}, ${t('productCard.detailsA11y')}`}
+            accessibilityLabel={`${displayName}, ${t('productCard.detailsA11y')}`}
             android_ripple={{ color: 'rgba(0,0,0,0.06)', foreground: true }}
           >
             <View style={styles.hero}>
@@ -164,7 +167,7 @@ export function ProductCatalogCard({
 
             <View style={styles.body}>
               <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
-                {product.name}
+                {displayName}
               </Text>
               {isBarber ? (
                 <Text style={styles.staffLine} numberOfLines={1}>

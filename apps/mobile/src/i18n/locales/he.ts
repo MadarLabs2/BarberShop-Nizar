@@ -522,6 +522,8 @@ export const he = {
     productNew: 'מוצר חדש',
     productNamePh: 'שם המוצר',
     productDescPh: 'תיאור קצר (אופציונלי)',
+    descriptionHePh: 'תיאור בעברית (אופציונלי)',
+    descriptionArPh: 'תיאור בערבית (אופציונלי)',
     categoryPh: 'למשל: טיפוח',
     deleteProductTitle: 'מחיקת מוצר',
     deleteProductMsg: 'למחוק לצמיתות את "{{name}}"? לא ניתן לשחזר.',
