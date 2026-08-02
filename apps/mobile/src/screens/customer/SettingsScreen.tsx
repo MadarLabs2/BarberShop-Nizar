@@ -236,25 +236,27 @@ export function SettingsScreen() {
         </View>
         </ShelfStaggerEnter>
 
-        <ShelfStaggerEnter index={notificationsShelfIndex}>
-          <Text style={styles.sectionHeading}>{t('settings.notificationsSection')}</Text>
-          <View style={styles.notificationsCard}>
-            <View style={styles.notificationsRow}>
-              <View style={styles.notificationsTextCol}>
-                <Text style={styles.notificationsTitle}>{t('settings.notificationsToggleTitle')}</Text>
-                <Text style={styles.notificationsBody}>{t('settings.notificationsToggleBody')}</Text>
+        {isRestored && isLoggedIn ? (
+          <ShelfStaggerEnter index={notificationsShelfIndex}>
+            <Text style={styles.sectionHeading}>{t('settings.notificationsSection')}</Text>
+            <View style={styles.notificationsCard}>
+              <View style={styles.notificationsRow}>
+                <View style={styles.notificationsTextCol}>
+                  <Text style={styles.notificationsTitle}>{t('settings.notificationsToggleTitle')}</Text>
+                  <Text style={styles.notificationsBody}>{t('settings.notificationsToggleBody')}</Text>
+                </View>
+                <Switch
+                  value={notificationsEnabled}
+                  onValueChange={handleToggleNotifications}
+                  disabled={!notificationsPrefsReady}
+                  trackColor={{ false: colors.border, true: colors.accent + '77' }}
+                  thumbColor={notificationsEnabled ? colors.accent : colors.surface}
+                  ios_backgroundColor={colors.border}
+                />
               </View>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={handleToggleNotifications}
-                disabled={!notificationsPrefsReady}
-                trackColor={{ false: colors.border, true: colors.accent + '77' }}
-                thumbColor={notificationsEnabled ? colors.accent : colors.surface}
-                ios_backgroundColor={colors.border}
-              />
             </View>
-          </View>
-        </ShelfStaggerEnter>
+          </ShelfStaggerEnter>
+        ) : null}
 
         {showLinkStaffProfile || showUnlinkStaffProfile ? (
           <ShelfStaggerEnter index={staffLinkShelfIndex}>
@@ -307,26 +309,37 @@ export function SettingsScreen() {
             <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
           </Pressable>
           <View style={styles.menuDivider} />
-          <Pressable style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]} onPress={handleAccessibility}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.menuRow,
+              !(isRestored && isLoggedIn) && styles.menuRowLast,
+              pressed && styles.menuRowPressed,
+            ]}
+            onPress={handleAccessibility}
+          >
             <View style={styles.menuIconWrap}>
               <Ionicons name="accessibility-outline" size={iconSize.lg} color={colors.accent} />
             </View>
             <Text style={styles.menuLabel}>{t('settings.accessibility')}</Text>
             <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
           </Pressable>
-          <View style={styles.menuDivider} />
-          <Pressable
-            style={({ pressed }) => [styles.menuRow, styles.menuRowLast, pressed && styles.menuRowPressed]}
-            onPress={handleDeleteAccount}
-          >
-            <View style={[styles.menuIconWrap, styles.menuIconWrapDanger]}>
-              <Ionicons name="person-remove-outline" size={iconSize.lg} color={colors.danger} />
-            </View>
-            <Text style={[styles.menuLabel, styles.menuLabelDanger]}>
-              {deletingAccount ? t('settings.deleteAccountBusy') : t('settings.deleteAccount')}
-            </Text>
-            <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
-          </Pressable>
+          {isRestored && isLoggedIn ? (
+            <>
+              <View style={styles.menuDivider} />
+              <Pressable
+                style={({ pressed }) => [styles.menuRow, styles.menuRowLast, pressed && styles.menuRowPressed]}
+                onPress={handleDeleteAccount}
+              >
+                <View style={[styles.menuIconWrap, styles.menuIconWrapDanger]}>
+                  <Ionicons name="person-remove-outline" size={iconSize.lg} color={colors.danger} />
+                </View>
+                <Text style={[styles.menuLabel, styles.menuLabelDanger]}>
+                  {deletingAccount ? t('settings.deleteAccountBusy') : t('settings.deleteAccount')}
+                </Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
+              </Pressable>
+            </>
+          ) : null}
         </View>
         </ShelfStaggerEnter>
         </ScreenEnter>

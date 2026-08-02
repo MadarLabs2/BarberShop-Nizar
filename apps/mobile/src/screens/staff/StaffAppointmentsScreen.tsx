@@ -38,6 +38,7 @@ import {
   formatDayShort,
   getTodayDateString,
   getWeekdayNameForYyyyMmDd,
+  isAppointmentUpcoming,
 } from '../../utils/dates';
 import { colors, spacing, radius, shadows, presets, textStyles, iconSize } from '../../theme';
 import { useStaffOperationalSurface } from '../../hooks/useStaffOperationalSurface';
@@ -159,18 +160,25 @@ function WeekAppointmentRow({
   const { t } = useTranslation();
   const { locale } = useAppLocale();
   const telUrl = getTelUrl(apt.clientPhone);
+  /** Start time already elapsed — this specific visit happened, not just "today" in general.
+   * Must not offer a Cancel action or read like it's still coming (matches the day-level "עבר"
+   * treatment already applied to whole past days, just at the per-appointment level too). */
+  const isPast = !isAppointmentUpcoming(apt.date, apt.time);
   return (
     <TouchableOpacity
       style={[
         styles.weekAptRow,
         compact && styles.weekAptRowCompact,
         isExpanded && styles.weekAptRowOpen,
+        isPast && styles.weekAptRowDone,
       ]}
       onPress={onPress}
       activeOpacity={0.75}
     >
       <View style={styles.weekAptMain}>
-        <Text style={[styles.weekAptTime, compact && styles.weekAptTimeCompact]}>{apt.time}</Text>
+        <Text style={[styles.weekAptTime, compact && styles.weekAptTimeCompact, isPast && styles.weekAptTimeDone]}>
+          {apt.time}
+        </Text>
         <View style={styles.weekAptMid}>
           <Text
             style={[styles.weekAptService, compact && styles.weekAptServiceCompact]}
@@ -182,6 +190,11 @@ function WeekAppointmentRow({
             {apt.clientName}
           </Text>
         </View>
+        {isPast ? (
+          <View style={styles.aptDoneBadge}>
+            <Text style={styles.aptDoneBadgeText}>{t('staff.apptDone')}</Text>
+          </View>
+        ) : null}
         <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={compact ? 16 : 17} color={colors.textTertiary} />
       </View>
       {isExpanded ? (
@@ -199,17 +212,19 @@ function WeekAppointmentRow({
           <Text style={styles.aptMeta}>
             {[localizeCatalogString(apt.branchName, locale), apt.duration > 0 && t('staff.minutesShort', { n: apt.duration })].filter(Boolean).join(' · ')}
           </Text>
-          <TouchableOpacity
-            style={[styles.cancelAptBtn, cancelDisabled && styles.cancelAptBtnDisabled]}
-            onPress={onCancelPress}
-            disabled={cancelDisabled}
-            activeOpacity={0.75}
-          >
-            <Ionicons name="close-circle-outline" size={iconSize.sm} color={cancelDisabled ? colors.textMuted : colors.danger} />
-            <Text style={[styles.cancelAptBtnText, cancelDisabled && styles.cancelAptBtnTextDisabled]}>
-              {t('staff.cancelAppointment')}
-            </Text>
-          </TouchableOpacity>
+          {isPast ? null : (
+            <TouchableOpacity
+              style={[styles.cancelAptBtn, cancelDisabled && styles.cancelAptBtnDisabled]}
+              onPress={onCancelPress}
+              disabled={cancelDisabled}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="close-circle-outline" size={iconSize.sm} color={cancelDisabled ? colors.textMuted : colors.danger} />
+              <Text style={[styles.cancelAptBtnText, cancelDisabled && styles.cancelAptBtnTextDisabled]}>
+                {t('staff.cancelAppointment')}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : null}
     </TouchableOpacity>
@@ -870,6 +885,24 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm - 2,
     paddingHorizontal: spacing.sm + 2,
     borderRadius: radius.md,
+  },
+  weekAptRowDone: {
+    opacity: 0.6,
+    borderStartColor: colors.textTertiary,
+  },
+  weekAptTimeDone: {
+    color: colors.textTertiary,
+  },
+  aptDoneBadge: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.full,
+    paddingVertical: 3,
+    paddingHorizontal: spacing.sm,
+  },
+  aptDoneBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
   },
   weekAptTimeCompact: {
     fontSize: 13,

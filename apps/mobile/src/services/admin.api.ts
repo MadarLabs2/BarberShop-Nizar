@@ -249,6 +249,11 @@ export async function getAppointmentsByStaffAndDate(token: string, staffId: stri
   return apiFetch<StaffDateAppointment[]>(`/admin/appointments/by-staff-date?${q}`, { token });
 }
 
+/** Admin deletes one appointment outright (not a cancel — the row is removed from the database). */
+export async function deleteAppointment(token: string, id: string) {
+  return apiFetch<{ ok: boolean }>(`/admin/appointments/${id}`, { method: 'DELETE', token });
+}
+
 export type StaffScheduleAppointment = {
   id: string;
   date: string;

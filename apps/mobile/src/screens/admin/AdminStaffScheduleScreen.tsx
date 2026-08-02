@@ -10,6 +10,8 @@ import {
   Linking,
   LayoutAnimation,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
@@ -21,7 +23,7 @@ import { EmptyState } from '../../components/feedback/EmptyState';
 import { Keyed } from '../../components/ui/Keyed';
 import { LoadingState } from '../../components/feedback/LoadingState';
 import { useAuth } from '../../hooks/useAuth';
-import { getStaffSchedule } from '../../services/admin.api';
+import { getStaffSchedule, deleteAppointment } from '../../services/admin.api';
 import type { StaffScheduleAppointment } from '../../services/admin.api';
 import { fetchStaff } from '../../services/bookings.api';
 import {
@@ -31,13 +33,21 @@ import {
 } from '../../services/adminPrefetchCache';
 import { getWarmStaffChipsForSchedule } from '../../hooks/useAdminCatalog';
 import { openDrawer } from '../../utils/nav';
-import { getDateRangeFromToday, formatIsoDateDmy, getWeekdayNameForYyyyMmDd } from '../../utils/dates';
+import { getDateRangeFromToday, formatIsoDateDmy, getWeekdayNameForYyyyMmDd, isAppointmentUpcoming } from '../../utils/dates';
 import { colors, spacing, radius, shadows, presets, textStyles, iconSize } from '../../theme';
 import { PageIntro } from '../../components/ui/PageIntro';
 import { canAccessAdmin } from '../../lib/navigation.roles';
 import { localizeCatalogString, useAppLocale } from '../../contexts/LocaleContext';
 
-function ScheduleAppointmentCard({ apt }: { apt: StaffScheduleAppointment }) {
+function ScheduleAppointmentCard({
+  apt,
+  onDelete,
+  deleting,
+}: {
+  apt: StaffScheduleAppointment;
+  onDelete: (apt: StaffScheduleAppointment) => void;
+  deleting: boolean;
+}) {
   const { t } = useTranslation();
   const { locale } = useAppLocale();
   const digits = apt.clientPhone?.replace(/\D/g, '') || '';
@@ -47,15 +57,24 @@ function ScheduleAppointmentCard({ apt }: { apt: StaffScheduleAppointment }) {
         ? `tel:+${digits}`
         : `tel:${digits.startsWith('0') ? digits : '0' + digits}`
       : null;
+  /** Start time already elapsed — visually distinguish from a still-upcoming appointment (this
+   * is a 14-day range starting today, so only today's earlier slots are ever affected). Delete
+   * stays available (record cleanup), this just stops it from reading as "still coming". */
+  const isPast = !apt._isBlocked && !isAppointmentUpcoming(apt.date, apt.time);
 
   return (
-    <View style={[styles.aptCard, apt._isBlocked && styles.aptCardBlocked]}>
+    <View style={[styles.aptCard, apt._isBlocked && styles.aptCardBlocked, isPast && styles.aptCardDone]}>
       <View style={styles.aptMain}>
         <View style={styles.aptTopLine}>
-          <Text style={styles.aptTime}>{apt.time}</Text>
+          <Text style={[styles.aptTime, isPast && styles.aptTimeDone]}>{apt.time}</Text>
           <Text style={styles.aptService} numberOfLines={2}>
             {apt._isBlocked ? t('admin.blockedLabel') : localizeCatalogString(apt.serviceName, locale)}
           </Text>
+          {isPast ? (
+            <View style={styles.aptDoneBadge}>
+              <Text style={styles.aptDoneBadgeText}>{t('admin.apptDone')}</Text>
+            </View>
+          ) : null}
         </View>
         {!apt._isBlocked && (
           <>
@@ -80,6 +99,22 @@ function ScheduleAppointmentCard({ apt }: { apt: StaffScheduleAppointment }) {
             .join(' • ') || (apt._isBlocked ? t('admin.minutesShort', { n: apt.duration }) : '')}
         </Text>
       </View>
+      {!apt._isBlocked && (
+        <TouchableOpacity
+          style={styles.aptDeleteBtn}
+          onPress={() => onDelete(apt)}
+          disabled={deleting}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('admin.deleteAppointmentA11y')}
+        >
+          {deleting ? (
+            <ActivityIndicator size="small" color={colors.danger} />
+          ) : (
+            <Ionicons name="trash-outline" size={iconSize.md} color={colors.danger} />
+          )}
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -106,6 +141,7 @@ export function AdminStaffScheduleScreen() {
   const [refreshing, setRefreshing] = useState(false);
   /** Only one day expanded at a time — keeps long lists scannable */
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const { from, to } = useMemo(() => getDateRangeFromToday(14), []);
 
@@ -191,6 +227,39 @@ export function AdminStaffScheduleScreen() {
   const onRefresh = useCallback(() => {
     void loadSchedule({ isPullRefresh: true });
   }, [loadSchedule]);
+
+  const handleDeleteAppointment = useCallback(
+    (apt: StaffScheduleAppointment) => {
+      Alert.alert(
+        t('admin.deleteAppointmentTitle'),
+        t('admin.deleteAppointmentMsg', { client: apt.clientName, service: apt.serviceName, time: apt.time }),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('admin.deleteAppointmentYes'),
+            style: 'destructive',
+            onPress: async () => {
+              if (!token) return;
+              setDeletingId(apt.id);
+              try {
+                await deleteAppointment(token, apt.id);
+                setAppointments((prev) => {
+                  const next = prev.filter((a) => a.id !== apt.id);
+                  setCachedSchedule(selectedStaffId, from, to, next);
+                  return next;
+                });
+              } catch (e) {
+                Alert.alert(t('common.error'), e instanceof Error ? e.message : t('admin.deleteAppointmentError'));
+              } finally {
+                setDeletingId(null);
+              }
+            },
+          },
+        ]
+      );
+    },
+    [token, selectedStaffId, from, to, t]
+  );
 
   const byDate = useMemo(() => {
     const map = new Map<string, StaffScheduleAppointment[]>();
@@ -308,7 +377,11 @@ export function AdminStaffScheduleScreen() {
                     >
                       {dayApts.map((apt) => (
                         <Keyed key={apt.id}>
-                          <ScheduleAppointmentCard apt={apt} />
+                          <ScheduleAppointmentCard
+                            apt={apt}
+                            onDelete={handleDeleteAppointment}
+                            deleting={deletingId === apt.id}
+                          />
                         </Keyed>
                       ))}
                     </Animated.View>
@@ -418,9 +491,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   aptCardBlocked: { backgroundColor: colors.accent + '12' },
+  aptCardDone: { opacity: 0.6 },
   aptMain: { flex: 1 },
+  aptDeleteBtn: {
+    padding: spacing.xs,
+    borderRadius: radius.full,
+  },
   aptTopLine: {
     flexDirection: 'row-reverse',
     alignItems: 'flex-start',
@@ -433,6 +514,18 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     minWidth: 40,
     fontVariant: Platform.OS === 'ios' ? ['tabular-nums'] : undefined,
+  },
+  aptTimeDone: { color: colors.textTertiary },
+  aptDoneBadge: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.full,
+    paddingVertical: 2,
+    paddingHorizontal: spacing.sm - 2,
+  },
+  aptDoneBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textSecondary,
   },
   aptService: {
     flex: 1,

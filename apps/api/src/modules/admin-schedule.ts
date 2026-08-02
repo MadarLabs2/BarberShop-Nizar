@@ -133,6 +133,62 @@ export class AdminScheduleService {
     return [...aptList, ...blockedList].sort((a, b) => String(a.time).localeCompare(String(b.time)));
   }
 
+  /**
+   * Admin removes one appointment outright (not a status flip — the row is actually gone).
+   * `appointments` is a leaf table (nothing else has a foreign key into it), so this is always
+   * safe. Mirrors `cancelAppointmentsOutsideWorkingWindow`'s side effects — free the slot for the
+   * waitlist and notify the customer — but only when the appointment was actually still active;
+   * deleting an already-cancelled row is just cleanup and needs neither.
+   */
+  async deleteAppointment(id: string): Promise<{ ok: boolean }> {
+    const client = this.supabase.getClient();
+    const { data: apt, error: fetchErr } = await client
+      .from('appointments')
+      .select('id, client_phone, service_name, status, date, time, staff_id, service_id')
+      .eq('id', id)
+      .maybeSingle();
+    if (fetchErr || !apt) throw new BadRequestException('Appointment not found');
+
+    const row = apt as {
+      client_phone: string | null;
+      service_name: string | null;
+      status: string;
+      date: string;
+      time: string;
+      staff_id: string;
+      service_id: string;
+    };
+
+    const { error: delErr } = await client.from('appointments').delete().eq('id', id);
+    if (delErr) throw new BadRequestException(delErr.message);
+
+    const timeShort = typeof row.time === 'string' ? row.time.slice(0, 5) : String(row.time);
+    const wasActive = row.status !== 'cancelled';
+
+    if (wasActive) {
+      void this.waitlist
+        .notifyFreedSlot({ staffId: row.staff_id, date: row.date, time: timeShort, serviceId: row.service_id })
+        .catch(() => {});
+
+      if (row.client_phone) {
+        const dateDisplay = formatIsraelDateLabel(row.date);
+        const svcName = row.service_name || 'טיפול';
+        this.notifications
+          .create({
+            userPhone: row.client_phone,
+            type: 'personal',
+            title: 'התור בוטל',
+            body: `מצטערים — התור ל${svcName} בתאריך ${dateDisplay} בשעה ${timeShort} בוטל על ידי הצוות. אנו מתנצלים על אי הנוחות ונשמח לעזור לקבוע מועד חדש.`,
+          })
+          .catch(() => {});
+      }
+    }
+
+    await this.cache.invalidateBookingsSlotsForStaffDate(row.staff_id, row.date);
+    if (wasActive) await this.cache.invalidateAdminSummary();
+    return { ok: true };
+  }
+
   async getStaffSchedule(
     staffId: string,
     from: string,
@@ -690,6 +746,12 @@ export class AdminScheduleController {
   @UseGuards(...ADMIN_GUARDS)
   getAppointmentsByStaffAndDate(@Query('staffId') staffId: string, @Query('date') dateStr: string) {
     return this.service.getAppointmentsByStaffAndDate(staffId, dateStr);
+  }
+
+  @Delete('appointments/:id')
+  @UseGuards(...ADMIN_GUARDS)
+  deleteAppointment(@Param('id') id: string) {
+    return this.service.deleteAppointment(id);
   }
 
   @Get('staff-schedule')
