@@ -13,6 +13,8 @@ export const icons = {
   favicon: require('../../assets/favicon.png'),
   /** Barbershop pole logo — Home header, beside the brand title */
   logo: require('../../assets/logo.png'),
+  /** Gold badge logo — drawer dashboard rows (top-bar button + admin/staff dashboard menu items) */
+  logoBadgeGold: require('../../assets/logo-badge-gold.png'),
 } as const;
 
 // Home screen media

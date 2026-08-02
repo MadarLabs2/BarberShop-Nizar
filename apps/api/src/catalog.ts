@@ -18,6 +18,7 @@ export type BranchDto = {
   wazeLink: string | null;
   phone: string | null;
   instagramUrl: string | null;
+  googleMapsUrl: string | null;
 };
 export type ServiceDto = { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number };
 export type StaffDto = {
@@ -45,7 +46,7 @@ export class CatalogService {
     const { data, error } = await this.supabase
       .getClient()
       .from('branches')
-      .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url')
+      .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url, google_maps_url')
       .eq('is_active', true)
       .order('name');
     if (error) return [];
@@ -59,6 +60,7 @@ export class CatalogService {
         waze_link: string | null;
         phone: string | null;
         instagram_url: string | null;
+        google_maps_url: string | null;
       }) => ({
         id: r.id,
         name: r.name,
@@ -68,6 +70,7 @@ export class CatalogService {
         wazeLink: r.waze_link ?? null,
         phone: r.phone ?? null,
         instagramUrl: r.instagram_url ?? null,
+        googleMapsUrl: r.google_maps_url ?? null,
       }),
     );
   }
@@ -199,7 +202,7 @@ export class CatalogService {
       branchIds.length > 0
         ? await client
             .from('branches')
-            .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url')
+            .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url, google_maps_url')
             .in('id', branchIds)
             .eq('is_active', true)
         : { data: [] };
@@ -215,6 +218,7 @@ export class CatalogService {
           waze_link: string | null;
           phone: string | null;
           instagram_url: string | null;
+          google_maps_url: string | null;
         }) => [
           r.id,
           {
@@ -226,6 +230,7 @@ export class CatalogService {
             wazeLink: r.waze_link ?? null,
             phone: r.phone ?? null,
             instagramUrl: r.instagram_url ?? null,
+            googleMapsUrl: r.google_maps_url ?? null,
           } satisfies BranchDto,
         ],
       ),
@@ -441,7 +446,7 @@ export class CatalogService {
       const { data: brRows } = await this.supabase
         .getClient()
         .from('branches')
-        .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url')
+        .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url, google_maps_url')
         .in('id', branchIds)
         .eq('is_active', true)
         .order('name');
@@ -455,6 +460,7 @@ export class CatalogService {
           waze_link: string | null;
           phone: string | null;
           instagram_url: string | null;
+          google_maps_url: string | null;
         }) => ({
           id: r.id,
           name: r.name,
@@ -464,6 +470,7 @@ export class CatalogService {
           wazeLink: r.waze_link ?? null,
           phone: r.phone ?? null,
           instagramUrl: r.instagram_url ?? null,
+          googleMapsUrl: r.google_maps_url ?? null,
         }),
       );
     }

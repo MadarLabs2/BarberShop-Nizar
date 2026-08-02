@@ -24,7 +24,13 @@ import type { DrawerMenuItem, MenuItemTarget } from '../../lib/navigation.roles'
 import { LanguageSwitcher } from '../settings/LanguageSwitcher';
 import { ScalePressable } from '../ui/ScalePressable';
 import { useShopBranch } from '../../hooks/useShopBranch';
+import { icons } from '../../utils/assets';
 import { colors, radius } from '../../theme';
+
+/** Admin dashboard ('0') and staff/my dashboard ('0b') rows get the brand logo badge instead of an Ionicon. */
+function isDashboardMenuItem(item: DrawerMenuItem): boolean {
+  return item.id === '0' || item.id === '0b';
+}
 
 /** Visual section breaks without a line on every row (RTL drawer). */
 function drawerSectionGapBefore(item: DrawerMenuItem, prev: DrawerMenuItem | null): boolean {
@@ -178,10 +184,15 @@ function DrawerContentInner(props: DrawerContentComponentProps) {
             <Text style={styles.dashboardButtonText}>
               {isAdmin ? t('drawer.dashboard') : t('drawer.myAppointments')}
             </Text>
-            <Ionicons name={isAdmin ? 'grid-outline' : 'calendar-outline'} size={24} color={colors.accent} />
+            <ExpoImage source={icons.logoBadgeGold} style={styles.dashboardLogoIcon} contentFit="contain" />
           </TouchableOpacity>
         ) : (
-          <View style={styles.topBarSpacer} />
+          // Guests and plain customers have no dashboard/appointments screen to jump to here —
+          // this is a non-interactive brand mark only, so the top bar isn't left visually empty.
+          <View style={styles.dashboardButton}>
+            <Text style={styles.dashboardButtonText}>{t('drawer.dashboard')}</Text>
+            <ExpoImage source={icons.logoBadgeGold} style={styles.dashboardLogoIcon} contentFit="contain" />
+          </View>
         )}
         <View style={styles.topBarSpacer} />
         <View style={styles.topBarActions}>
@@ -269,12 +280,14 @@ function DrawerContentInner(props: DrawerContentComponentProps) {
                 {t(item.titleKey)}
               </Text>
               <View style={styles.menuItemIconWrap}>
-                {rowBadge != null ? (
+                {isDashboardMenuItem(item) ? (
+                  <ExpoImage source={icons.logoBadgeGold} style={styles.menuItemLogoIcon} contentFit="contain" />
+                ) : rowBadge != null ? (
                   <View style={styles.iconWithBadge}>
                     <Ionicons
                       name={item.icon as keyof typeof Ionicons.glyphMap}
                       size={24}
-                      color={item.id === '8' ? colors.danger : item.id === '0' || item.id === '0b' ? colors.accent : colors.text}
+                      color={item.id === '8' ? colors.danger : colors.text}
                     />
                     <View style={styles.badge}>
                       <Text style={styles.badgeText}>{rowBadge}</Text>
@@ -284,7 +297,7 @@ function DrawerContentInner(props: DrawerContentComponentProps) {
                   <Ionicons
                     name={item.icon as keyof typeof Ionicons.glyphMap}
                     size={24}
-                    color={item.id === '8' ? colors.danger : item.id === '0' || item.id === '0b' ? colors.accent : colors.text}
+                    color={item.id === '8' ? colors.danger : colors.text}
                   />
                 )}
               </View>
@@ -334,7 +347,8 @@ const styles = StyleSheet.create({
   },
   /** RTL: label on the right, icon to its left toward center */
   dashboardButton: { flexDirection: 'row-reverse', alignItems: 'center', padding: 8, gap: 6 },
-  dashboardButtonText: { fontSize: 16, fontWeight: '600', color: colors.accent },
+  dashboardButtonText: { fontSize: 16, fontWeight: '600', color: colors.text },
+  dashboardLogoIcon: { width: 24, height: 24 },
   closeButton: { padding: 8 },
   header: {
     paddingHorizontal: 24,
@@ -393,6 +407,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   menuItemIconWrap: { minWidth: 28, alignItems: 'center', justifyContent: 'center' },
+  menuItemLogoIcon: { width: 24, height: 24 },
   iconWithBadge: { position: 'relative' },
   badge: {
     position: 'absolute',
@@ -415,7 +430,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   menuItemTextLogout: { color: colors.danger, fontWeight: '600' },
-  menuItemTextDashboard: { color: colors.accent, fontWeight: '600' },
+  menuItemTextDashboard: { color: colors.text, fontWeight: '600' },
   /** RTL: brand name before clock icon (reading from the right) */
   footer: {
     flexDirection: 'row-reverse',

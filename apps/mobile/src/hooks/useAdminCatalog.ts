@@ -260,6 +260,7 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
     phone: '',
     branchPhone: '',
     instagramUrl: '',
+    googleMapsUrl: '',
   });
   const [saving, setSaving] = useState(false);
   const [addStaffBranch, setAddStaffBranch] = useState<string | null>(null);
@@ -349,6 +350,7 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
       phone: '',
       branchPhone: '',
       instagramUrl: '',
+      googleMapsUrl: '',
     });
     setModalVisible(true);
   }, []);
@@ -368,6 +370,7 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
         phone: '',
         branchPhone: b.phone ?? '',
         instagramUrl: b.instagramUrl ?? '',
+        googleMapsUrl: b.googleMapsUrl ?? '',
       });
     } else if ('price' in item) {
       const s = item as Service;
@@ -382,6 +385,7 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
         phone: '',
         branchPhone: '',
         instagramUrl: '',
+        googleMapsUrl: '',
       });
     } else {
       const st = item as Staff;
@@ -396,6 +400,7 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
         phone: st.phone ?? '',
         branchPhone: '',
         instagramUrl: '',
+        googleMapsUrl: '',
       });
     }
     setModalVisible(true);
@@ -426,6 +431,7 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
             wazeLink: form.wazeLink.trim() || undefined,
             phone: form.branchPhone.trim() || undefined,
             instagramUrl: form.instagramUrl.trim() || undefined,
+            googleMapsUrl: form.googleMapsUrl.trim() || undefined,
           };
           if (editItem) {
             const optimisticBranch: Branch = {
@@ -437,6 +443,7 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
               wazeLink: dto.wazeLink ?? (editItem as Branch).wazeLink ?? null,
               phone: dto.phone ?? (editItem as Branch).phone ?? null,
               instagramUrl: dto.instagramUrl ?? (editItem as Branch).instagramUrl ?? null,
+              googleMapsUrl: dto.googleMapsUrl ?? (editItem as Branch).googleMapsUrl ?? null,
             };
             setBranches((list) => list.map((b) => (b.id === editItem.id ? optimisticBranch : b)));
             upsertBranchInCaches(optimisticBranch);
@@ -457,6 +464,7 @@ export function useAdminCatalog(token: string | null, routeParams?: { tab?: Admi
               wazeLink: dto.wazeLink ?? null,
               phone: dto.phone ?? null,
               instagramUrl: dto.instagramUrl ?? null,
+              googleMapsUrl: dto.googleMapsUrl ?? null,
               isActive: true,
             };
             setBranches((list) => [...list, temp]);

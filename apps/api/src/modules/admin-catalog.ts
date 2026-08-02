@@ -68,6 +68,7 @@ type BranchRow = {
   waze_link: string | null;
   phone: string | null;
   instagram_url: string | null;
+  google_maps_url: string | null;
   is_active: boolean;
 };
 type ServiceRow = {
@@ -123,6 +124,7 @@ export class AdminCatalogService {
       wazeLink: string | null;
       phone: string | null;
       instagramUrl: string | null;
+      googleMapsUrl: string | null;
       isActive: boolean;
     }[];
     services: { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number; isActive: boolean }[];
@@ -132,7 +134,7 @@ export class AdminCatalogService {
     const [{ data: branches }, { data: services }, { data: staff }] = await Promise.all([
       client
         .from('branches')
-        .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url, is_active')
+        .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url, google_maps_url, is_active')
         .order('name'),
       client.from('services').select('id, name, name_he, name_ar, price, duration, is_active').order('name'),
       client.from('staff').select('id, name, phone, avatar_url, is_active, profile_id, can_block_own_time, can_set_own_working_hours').order('name'),
@@ -148,6 +150,7 @@ export class AdminCatalogService {
         wazeLink: r.waze_link ?? null,
         phone: r.phone ?? null,
         instagramUrl: r.instagram_url ?? null,
+        googleMapsUrl: r.google_maps_url ?? null,
         isActive: r.is_active !== false,
       })),
       services: (services || []).map((r: ServiceRow) => ({
@@ -182,6 +185,7 @@ export class AdminCatalogService {
       wazeLink: string | null;
       phone: string | null;
       instagramUrl: string | null;
+      googleMapsUrl: string | null;
       isActive: boolean;
     }[];
     services: { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number; isActive: boolean }[];
@@ -190,7 +194,7 @@ export class AdminCatalogService {
     return this.cache.getOrSet(CACHE_KEY_ADMIN_CATALOG, TTL_ADMIN_CATALOG, () => this.fetchCatalogAll());
   }
 
-  async createBranch(dto: { nameHe: string; nameAr: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string }) {
+  async createBranch(dto: { nameHe: string; nameAr: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string; googleMapsUrl?: string }) {
     const nameHe = dto.nameHe?.trim();
     const nameAr = dto.nameAr?.trim();
     if (!nameHe) throw new BadRequestException('Hebrew name required');
@@ -209,6 +213,7 @@ export class AdminCatalogService {
         waze_link: dto.wazeLink?.trim() || null,
         phone: dto.phone?.trim() || null,
         instagram_url: dto.instagramUrl?.trim() || null,
+        google_maps_url: dto.googleMapsUrl?.trim() || null,
       })
       .select('id, name, name_he, name_ar, address, waze_link, phone, instagram_url, is_active')
       .single();
@@ -223,6 +228,7 @@ export class AdminCatalogService {
       wazeLink: r.waze_link ?? null,
       phone: r.phone ?? null,
       instagramUrl: r.instagram_url ?? null,
+      googleMapsUrl: r.google_maps_url ?? null,
       isActive: r.is_active !== false,
     };
     await this.cache.invalidateCatalogAndAdmin();
@@ -231,7 +237,7 @@ export class AdminCatalogService {
 
   async updateBranch(
     id: string,
-    dto: { nameHe?: string; nameAr?: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string; isActive?: boolean },
+    dto: { nameHe?: string; nameAr?: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string; googleMapsUrl?: string; isActive?: boolean },
   ) {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (dto.nameHe !== undefined) {
@@ -249,6 +255,7 @@ export class AdminCatalogService {
     if (dto.wazeLink !== undefined) updates.waze_link = dto.wazeLink?.trim() || null;
     if (dto.phone !== undefined) updates.phone = dto.phone?.trim() || null;
     if (dto.instagramUrl !== undefined) updates.instagram_url = dto.instagramUrl?.trim() || null;
+    if (dto.googleMapsUrl !== undefined) updates.google_maps_url = dto.googleMapsUrl?.trim() || null;
     if (dto.isActive !== undefined) updates.is_active = !!dto.isActive;
     const { data, error } = await this.supabase
       .getClient()
@@ -268,6 +275,7 @@ export class AdminCatalogService {
       wazeLink: r.waze_link ?? null,
       phone: r.phone ?? null,
       instagramUrl: r.instagram_url ?? null,
+      googleMapsUrl: r.google_maps_url ?? null,
       isActive: r.is_active !== false,
     };
     await this.cache.invalidateCatalogAndAdmin();
@@ -967,7 +975,7 @@ export class AdminCatalogController {
 
   @Post('branches')
   @UseGuards(...GUARDS)
-  createBranch(@Body() dto: { nameHe: string; nameAr: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string }) {
+  createBranch(@Body() dto: { nameHe: string; nameAr: string; address?: string; wazeLink?: string; phone?: string; instagramUrl?: string; googleMapsUrl?: string }) {
     return this.service.createBranch(dto);
   }
 
@@ -983,6 +991,7 @@ export class AdminCatalogController {
       wazeLink?: string;
       phone?: string;
       instagramUrl?: string;
+      googleMapsUrl?: string;
       isActive?: boolean;
     },
   ) {

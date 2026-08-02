@@ -9,6 +9,7 @@ export type Branch = {
   wazeLink: string | null;
   phone: string | null;
   instagramUrl: string | null;
+  googleMapsUrl: string | null;
 };
 export type Service = { id: string; name: string; nameHe: string; nameAr: string; price: number; duration: number };
 export type WorkingDayHours = { dayOfWeek: number; startTime: string; endTime: string };

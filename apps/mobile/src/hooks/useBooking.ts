@@ -63,6 +63,7 @@ function buildStaffBookingContextFromSummary(member: CatalogStaffMember): StaffB
       wazeLink: b.wazeLink ?? null,
       phone: b.phone ?? null,
       instagramUrl: b.instagramUrl ?? null,
+      googleMapsUrl: b.googleMapsUrl ?? null,
     })),
     workingDays: [],
     services: s.services.map((svc) => ({

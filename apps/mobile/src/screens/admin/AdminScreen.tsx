@@ -149,6 +149,7 @@ export function AdminScreen() {
   const wazeInputRef = useRef<TextInput>(null);
   const branchPhoneInputRef = useRef<TextInput>(null);
   const instagramInputRef = useRef<TextInput>(null);
+  const googleMapsInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (!admin.modalVisible) {
@@ -1257,6 +1258,22 @@ export function AdminScreen() {
                     onChangeText={(tx) => admin.setForm((f) => ({ ...f, instagramUrl: tx }))}
                     placeholderTextColor={colors.textMuted}
                     onFocus={() => setFocusedField('instagram')}
+                    onBlur={() => setFocusedField(null)}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onSubmitEditing={() => googleMapsInputRef.current?.focus()}
+                  />
+                  <TextInput
+                    ref={googleMapsInputRef}
+                    style={[adminFormStyles.input, focusedField === 'googleMaps' && adminFormStyles.inputFocused]}
+                    placeholder={t('admin.googleMapsPh')}
+                    value={admin.form.googleMapsUrl}
+                    onChangeText={(tx) => admin.setForm((f) => ({ ...f, googleMapsUrl: tx }))}
+                    placeholderTextColor={colors.textMuted}
+                    onFocus={() => setFocusedField('googleMaps')}
                     onBlur={() => setFocusedField(null)}
                     autoCapitalize="none"
                     autoCorrect={false}
