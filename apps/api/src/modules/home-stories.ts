@@ -161,6 +161,13 @@ export class HomeStoriesService {
     return pub.publicUrl;
   }
 
+  /**
+   * Admin dashboard upload. When the admin is *also* a linked staff member, attribute the story
+   * to their own staff profile (same as the dedicated staff-upload path) instead of always
+   * posting as the generic salon account — an admin+staff dual-role user has no other way to
+   * reach this screen than via the admin dashboard, so defaulting to `null` here meant their
+   * posts could never show under their own name.
+   */
   async createSalonStory(user: UserPayload, file: Express.Multer.File): Promise<HomeStoryItemDto> {
     if (!user.isAdmin) throw new ForbiddenException('Admin only');
     const imageUrl = await this.uploadBuffer(file);
@@ -169,7 +176,7 @@ export class HomeStoriesService {
       .from('home_stories')
       .insert({
         image_url: imageUrl,
-        staff_id: null,
+        staff_id: user.staffId ?? null,
         created_by_profile_id: user.id,
       })
       .select('id, image_url, created_at, views_count')

@@ -6,7 +6,17 @@ export const HOME_STORY_DELETED_EVENT = 'homeStoryDeleted';
 
 export type HomeStoryUploadedPayload =
   | { variant: 'salon'; story: HomeStoryItem; replaceTempId?: string }
-  | { variant: 'staff'; story: HomeStoryItem; staffId: string; displayName: string; replaceTempId?: string };
+  | {
+      variant: 'staff';
+      story: HomeStoryItem;
+      staffId: string;
+      displayName: string;
+      /** Uploader's own avatar — without it, a staff member's very first story (no existing
+       * author bucket to inherit an avatar from) shows a placeholder icon until the next real
+       * fetch instead of their photo immediately. */
+      avatarUrl: string | null;
+      replaceTempId?: string;
+    };
 
 export function emitHomeStoryUploaded(payload: HomeStoryUploadedPayload): void {
   DeviceEventEmitter.emit(HOME_STORY_UPLOADED_EVENT, payload);
@@ -25,7 +35,7 @@ export function removeStoryIdFromAuthors(authors: HomeStoryAuthor[], id: string)
 
 export function pendingPayloadFromUpload(p: HomeStoryUploadedPayload): HomeStoryUploadedPayload {
   if (p.variant === 'salon') return { variant: 'salon', story: p.story };
-  return { variant: 'staff', story: p.story, staffId: p.staffId, displayName: p.displayName };
+  return { variant: 'staff', story: p.story, staffId: p.staffId, displayName: p.displayName, avatarUrl: p.avatarUrl };
 }
 
 function stripStoryIdEverywhere(authors: HomeStoryAuthor[], id: string): HomeStoryAuthor[] {
@@ -65,14 +75,14 @@ export function mergeHomeStoryIntoAuthors(
     );
   }
 
-  const { staffId, displayName } = payload;
+  const { staffId, displayName, avatarUrl } = payload;
   const staffIdx = base.findIndex((a) => a.authorKey === staffId);
   if (staffIdx === -1) {
     const newAuthor: HomeStoryAuthor = {
       authorKey: staffId,
       kind: 'staff',
       displayName,
-      avatarUrl: null,
+      avatarUrl,
       stories: [story],
     };
     const salonIdx = base.findIndex((a) => a.kind === 'salon' && a.authorKey === 'salon');

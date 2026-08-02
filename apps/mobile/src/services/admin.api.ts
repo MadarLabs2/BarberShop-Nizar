@@ -254,6 +254,19 @@ export async function deleteAppointment(token: string, id: string) {
   return apiFetch<{ ok: boolean }>(`/admin/appointments/${id}`, { method: 'DELETE', token });
 }
 
+export type CreatedAdminAppointment = { id: string; date: string; time: string; serviceName: string; price: number };
+/** Admin books a walk-in/phone-in appointment for a client who doesn't use the app — no profile_id, just a name (+ optional phone). */
+export async function createAppointmentForStaff(
+  token: string,
+  dto: { staffId: string; branchId: string; serviceId: string; date: string; time: string; clientName: string; clientPhone?: string },
+): Promise<CreatedAdminAppointment> {
+  return apiFetch<CreatedAdminAppointment>('/admin/appointments', {
+    method: 'POST',
+    body: JSON.stringify(dto),
+    token,
+  });
+}
+
 export type StaffScheduleAppointment = {
   id: string;
   date: string;

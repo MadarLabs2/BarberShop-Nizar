@@ -157,6 +157,7 @@ export function HomeStoriesManageScreen() {
     };
     const displayName =
       `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || t('home.storiesStaffFallback');
+    const avatarUrl = user?.avatarUrl ?? null;
 
     if (isStaffVariant) {
       setRows((prev) => {
@@ -170,16 +171,25 @@ export function HomeStoriesManageScreen() {
           story: optimistic,
           staffId: user.staffId,
           displayName,
+          avatarUrl,
         });
       }
     } else {
-      const adminRow: AdminStoryRow = { ...optimistic, staffId: null, authorLabel: '' };
+      // Admin dashboard, but this admin is also a linked staff member — attribute to them, not
+      // the generic salon account (they have no other upload entry point than this one).
+      const adminRow: AdminStoryRow = user?.staffId
+        ? { ...optimistic, staffId: user.staffId, authorLabel: displayName }
+        : { ...optimistic, staffId: null, authorLabel: '' };
       setRows((prev) => {
         const nextRows = [adminRow, ...prev];
         persistRows(nextRows);
         return nextRows;
       });
-      emitHomeStoryUploaded({ variant: 'salon', story: optimistic });
+      if (user?.staffId) {
+        emitHomeStoryUploaded({ variant: 'staff', story: optimistic, staffId: user.staffId, displayName, avatarUrl });
+      } else {
+        emitHomeStoryUploaded({ variant: 'salon', story: optimistic });
+      }
     }
 
     setUploading(true);
@@ -194,6 +204,7 @@ export function HomeStoriesManageScreen() {
             story: created,
             staffId: user.staffId,
             displayName,
+            avatarUrl,
             replaceTempId: tempId,
           });
         }
@@ -205,8 +216,14 @@ export function HomeStoriesManageScreen() {
         });
       } else {
         created = await uploadSalonHomeStory(token, prepared.uri, prepared.mimeType);
-        emitHomeStoryUploaded({ variant: 'salon', story: created, replaceTempId: tempId });
-        const adminRow: AdminStoryRow = { ...created, staffId: null, authorLabel: '' };
+        if (user?.staffId) {
+          emitHomeStoryUploaded({ variant: 'staff', story: created, staffId: user.staffId, displayName, avatarUrl, replaceTempId: tempId });
+        } else {
+          emitHomeStoryUploaded({ variant: 'salon', story: created, replaceTempId: tempId });
+        }
+        const adminRow: AdminStoryRow = user?.staffId
+          ? { ...created, staffId: user.staffId, authorLabel: displayName }
+          : { ...created, staffId: null, authorLabel: '' };
         setRows((prev) => {
           const next = prev.filter((r) => r.id !== tempId && r.id !== created.id);
           const nextRows = [adminRow, ...next];

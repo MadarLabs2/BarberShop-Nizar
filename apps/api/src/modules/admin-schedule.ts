@@ -25,6 +25,7 @@ import { WaitlistModule } from '../waitlist/waitlist.module';
 import { WaitlistService } from '../waitlist/waitlist.service';
 import { israelTodayYmd, israelNowMinutesSinceMidnight, dayOfWeekForYmd, formatIsraelDateLabel } from '../core/israel-time';
 import { NotificationsModule, NotificationsService } from '../notifications';
+import { overlaps } from '../bookings';
 
 const ADMIN_GUARDS = [TokenAuthGuard, AdminGuard];
 
@@ -187,6 +188,156 @@ export class AdminScheduleService {
     await this.cache.invalidateBookingsSlotsForStaffDate(row.staff_id, row.date);
     if (wasActive) await this.cache.invalidateAdminSummary();
     return { ok: true };
+  }
+
+  /**
+   * Admin books a walk-in / phone-in appointment for a client who doesn't use the app — just a
+   * name (phone optional but recommended: `bookings.ts`'s `getMyAppointments` already matches by
+   * `client_phone OR profile_id`, so if this person later creates an account with the same number
+   * the visit shows up as theirs automatically). No `profile_id` is set.
+   *
+   * Deliberately mirrors `BookingsController.create`'s validation (branch/service/staff active,
+   * branch_staff + staff_service links, working-hours window, a fast pre-check for an obvious
+   * conflict) and always finishes through the same `create_or_reschedule_appointment` RPC — same
+   * per-staff advisory lock, same exclusion constraint, same blocked_slots re-check under that
+   * lock, so this can never race a customer's own concurrent booking into a double-booking.
+   * Two differences from the customer path: no 14-day booking-horizon cap (an admin scheduling a
+   * real client isn't the self-service abuse that horizon guards against), and no "max 2 upcoming
+   * appointments" cap (that's a per-customer app-usage limit; a walk-in isn't using the app).
+   */
+  async createAppointmentForStaff(dto: {
+    staffId: string;
+    branchId: string;
+    serviceId: string;
+    date: string;
+    time: string;
+    clientName: string;
+    clientPhone?: string;
+  }): Promise<{ id: string; date: string; time: string; serviceName: string; price: number }> {
+    const { staffId, branchId, serviceId, date, time } = dto;
+    const clientName = dto.clientName.trim();
+    if (!clientName) throw new BadRequestException('שם הלקוח נדרש');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new BadRequestException('Invalid date format (YYYY-MM-DD)');
+    if (!/^\d{1,2}:\d{2}$/.test(time)) throw new BadRequestException('Invalid time format (HH:MM)');
+    const clientPhone = dto.clientPhone?.trim() || null;
+
+    const client = this.supabase.getClient();
+
+    const { data: branch } = await client
+      .from('branches')
+      .select('id, name, name_he, name_ar, is_active')
+      .eq('id', branchId)
+      .maybeSingle();
+    if (!branch) throw new BadRequestException('Branch not found');
+    const br = branch as { name: string; name_he: string; name_ar: string; is_active?: boolean };
+    if (br.is_active === false) throw new BadRequestException('Branch not available');
+
+    const { data: service } = await client
+      .from('services')
+      .select('id, name, name_he, name_ar, is_active')
+      .eq('id', serviceId)
+      .maybeSingle();
+    if (!service) throw new BadRequestException('Service not found');
+    const svcBase = service as { name: string; name_he: string; name_ar: string; is_active?: boolean };
+    if (svcBase.is_active === false) throw new BadRequestException('Service not available');
+
+    const { data: staffServiceRow } = await client
+      .from('staff_service')
+      .select('price, duration')
+      .eq('staff_id', staffId)
+      .eq('service_id', serviceId)
+      .maybeSingle();
+    if (!staffServiceRow) throw new BadRequestException('איש הצוות אינו מספק את הטיפול הזה');
+    const ss = staffServiceRow as { price: number; duration: number };
+
+    const { data: staff } = await client.from('staff').select('id, name, is_active').eq('id', staffId).maybeSingle();
+    if (!staff) throw new BadRequestException('Staff not found');
+    const st = staff as { name: string; is_active?: boolean };
+    if (st.is_active === false) throw new BadRequestException('Staff not available');
+
+    const { data: link } = await client
+      .from('branch_staff')
+      .select('branch_id')
+      .eq('branch_id', branchId)
+      .eq('staff_id', staffId)
+      .maybeSingle();
+    if (!link) throw new BadRequestException('Staff not assigned to branch');
+
+    const dayOfWeek = dayOfWeekForYmd(date);
+    const { data: workingDays } = await client.from('staff_working_days').select('day_of_week, start_time, end_time').eq('staff_id', staffId);
+    const dayRow = (workingDays || []).find((r: { day_of_week: number }) => r.day_of_week === dayOfWeek) as
+      | { start_time: string | null; end_time: string | null }
+      | undefined;
+    if (!dayRow) throw new BadRequestException('יום זה אינו יום עבודה של איש הצוות');
+    const startMins = this.timeToMins(dayRow.start_time ? String(dayRow.start_time).slice(0, 5) : '09:00');
+    const endMins = this.timeToMins(dayRow.end_time ? String(dayRow.end_time).slice(0, 5) : '19:00');
+    const slotMins = this.timeToMins(time);
+    if (slotMins < startMins || slotMins + ss.duration > endMins) {
+      throw new BadRequestException('השעה שנבחרה מחוץ לשעות העבודה של איש הצוות');
+    }
+
+    const today = israelTodayYmd();
+    if (date < today || (date === today && slotMins <= israelNowMinutesSinceMidnight())) {
+      throw new BadRequestException('לא ניתן לקבוע תור למועד שכבר עבר');
+    }
+
+    const [apts, blocked] = await Promise.all([
+      client.from('appointments').select('time, duration').eq('staff_id', staffId).eq('date', date).eq('status', 'confirmed'),
+      client.from('blocked_slots').select('time, duration').eq('staff_id', staffId).eq('date', date),
+    ]);
+    const booked = [
+      ...(apts.data || []).map((r: { time: string; duration: number }) => ({ start: this.timeToMins(r.time), duration: r.duration || 40 })),
+      ...(blocked.data || []).map((r: { time: string; duration: number }) => ({ start: this.timeToMins(r.time), duration: r.duration || 40 })),
+    ];
+    if (booked.some((b) => overlaps(b.start, b.duration, slotMins, ss.duration))) {
+      throw new BadRequestException('השעה הזו כבר תפוסה');
+    }
+
+    const timeNormalized = time.length === 5 ? time : `${time}:00`;
+    const { data: insertedRows, error } = await client.rpc('create_or_reschedule_appointment', {
+      p_id: null,
+      p_profile_id: null,
+      p_client_phone: clientPhone,
+      p_client_name: clientName,
+      p_branch_id: branchId,
+      p_staff_id: staffId,
+      p_service_id: serviceId,
+      p_date: date,
+      p_time: timeNormalized,
+      p_duration: ss.duration,
+      p_service_name: svcBase.name,
+      p_staff_name: st.name,
+      p_branch_name: br.name,
+      p_price: ss.price,
+      p_service_name_he: svcBase.name_he,
+      p_service_name_ar: svcBase.name_ar,
+      p_branch_name_he: br.name_he,
+      p_branch_name_ar: br.name_ar,
+    });
+
+    if (error) {
+      const code = (error as { code?: string }).code;
+      const message = (error as { message?: string }).message || '';
+      if (code === '23505' || code === '23P01' || message.includes('SLOT_BLOCKED')) {
+        throw new BadRequestException('השעה נתפסה — נסו שעה אחרת');
+      }
+      throw new BadRequestException('Failed to create appointment');
+    }
+
+    const inserted = Array.isArray(insertedRows) ? insertedRows[0] : insertedRows;
+    if (!inserted) throw new BadRequestException('Failed to create appointment');
+    const row = inserted as Record<string, unknown>;
+
+    await this.cache.invalidateBookingsSlotsForStaffDate(staffId, date);
+    await this.cache.invalidateAdminSummary();
+
+    return {
+      id: row.id as string,
+      date: row.date as string,
+      time: typeof row.time === 'string' ? row.time.slice(0, 5) : (row.time as string),
+      serviceName: row.service_name as string,
+      price: row.price as number,
+    };
   }
 
   async getStaffSchedule(
@@ -752,6 +903,23 @@ export class AdminScheduleController {
   @UseGuards(...ADMIN_GUARDS)
   deleteAppointment(@Param('id') id: string) {
     return this.service.deleteAppointment(id);
+  }
+
+  @Post('appointments')
+  @UseGuards(...ADMIN_GUARDS)
+  createAppointmentForStaff(
+    @Body()
+    dto: {
+      staffId: string;
+      branchId: string;
+      serviceId: string;
+      date: string;
+      time: string;
+      clientName: string;
+      clientPhone?: string;
+    },
+  ) {
+    return this.service.createAppointmentForStaff(dto);
   }
 
   @Get('staff-schedule')

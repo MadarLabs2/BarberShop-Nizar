@@ -31,7 +31,7 @@ export type RootDrawerParamList = {
   StaffAppointments: undefined;
   StaffWaitlist: undefined;
   Admin: { tab?: 'staff' | 'services' | 'branches' | 'workdays' };
-  AdminStaffSchedule: undefined;
+  AdminStaffSchedule: { staffId?: string; date?: string; returnTo?: keyof RootDrawerParamList } | undefined;
   AdminProducts: undefined;
   AdminCustomers: undefined;
   AdminCustomerDetails: {

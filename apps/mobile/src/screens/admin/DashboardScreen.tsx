@@ -38,6 +38,7 @@ import { useDashboard } from '../../hooks/useDashboard';
 import { prefetchAdminBlockedSlots } from '../../hooks/useAdminBlockedSlots';
 import { openDrawer } from '../../utils/nav';
 import { formatIsoDateDmy, getTodayDateString, parseYyyyMmDdToDate, toDateString } from '../../utils/dates';
+import { buildAddAppointmentRoute } from '../../lib/adminAddAppointmentRoute';
 import { isValidDateString } from '../../utils/validators';
 import { WheelTimePickerSheet } from '../../components/ui/WheelTimePickerSheet';
 import { colors, spacing, typography, radius, shadows, presets, textStyles, iconSize, layout } from '../../theme';
@@ -406,7 +407,19 @@ export function DashboardScreen() {
           <View style={dashStyles.groupedList}>
             <TouchableOpacity
               style={[dashStyles.mgmtRow, dashStyles.groupedRowDivider]}
-              onPress={() => navigation.navigate('Booking')}
+              onPress={() => {
+                // Admin walk-in booking flow — never the customer Booking screen, which would
+                // book under the admin's own profile/phone instead of the actual client's.
+                const route = buildAddAppointmentRoute(d.staffList, getTodayDateString());
+                if (!route) {
+                  Alert.alert(t('common.error'), t('admin.dashAddApptNoStaff'));
+                  return;
+                }
+                (navigation.navigate as (name: string, params?: Record<string, unknown>) => void)(
+                  route.screen,
+                  route.params
+                );
+              }}
               activeOpacity={0.82}
             >
               <View style={dashStyles.mgmtRowIcon}>
@@ -444,7 +457,12 @@ export function DashboardScreen() {
             <TouchableOpacity
               style={[dashStyles.mgmtRow, dashStyles.groupedRowDivider]}
               onPressIn={warmAdminManagementData}
-              onPress={() => (navigation.navigate as (name: string) => void)('AdminStaffSchedule')}
+              onPress={() =>
+                (navigation.navigate as (name: string, params?: Record<string, unknown>) => void)(
+                  'AdminStaffSchedule',
+                  { returnTo: 'Dashboard' }
+                )
+              }
               activeOpacity={0.82}
             >
               <View style={dashStyles.mgmtRowIcon}>

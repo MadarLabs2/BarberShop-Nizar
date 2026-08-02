@@ -1,5 +1,9 @@
 import { useState, useCallback, useEffect, useRef, useLayoutEffect } from 'react';
-import { InteractionManager } from 'react-native';
+import { InteractionManager, DeviceEventEmitter } from 'react-native';
+import {
+  ADMIN_APPOINTMENT_CREATED_EVENT,
+  type AdminAppointmentCreatedPayload,
+} from '../lib/adminScheduleInvalidation';
 import i18n from '../i18n';
 import { useFocusEffect } from '@react-navigation/native';
 import { getAuthState } from '../store/auth.store';
@@ -187,6 +191,23 @@ export function useDashboard(
       setLoading(true);
     }
   }, [token]);
+
+  /** Admin books a walk-in from the day-timeline screen — summary counts and the updates feed
+   * cache behind a 45s staleness window (see the focus effect below) that would otherwise show
+   * stale numbers right after a real mutation. Force a real reload immediately instead. */
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      ADMIN_APPOINTMENT_CREATED_EVENT,
+      (payload: AdminAppointmentCreatedPayload) => {
+        void loadAdmin();
+        lastLoadAtRef.current = Date.now();
+        if (payload.staffId === opStaffId && payload.date === opDate) {
+          void loadOpList(true);
+        }
+      }
+    );
+    return () => sub.remove();
+  }, [loadAdmin, loadOpList, opStaffId, opDate]);
 
   useFocusEffect(
     useCallback(() => {
