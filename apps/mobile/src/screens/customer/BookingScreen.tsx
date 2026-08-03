@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Modal,
   Platform,
+  Switch,
 } from 'react-native';
 import type { CatalogStaffMember } from '../../services/bookings.api';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -25,6 +26,7 @@ import { EmptyState } from '../../components/feedback/EmptyState';
 import { BottomSheetModal } from '../../components/ui/BottomSheetModal';
 import { AppButton } from '../../components/ui/AppButton';
 import { useBooking } from '../../hooks/useBooking';
+import { useBirthdayReward } from '../../hooks/useBirthdayReward';
 import { formatDateDmy, formatDateWithWeekday, getWeekdayNameForYyyyMmDd, toDateString } from '../../utils/dates';
 import { prefsOverlapStaffWindow, timeToMins } from '../../utils/waitlistPrefs';
 import { useAuth } from '../../hooks/useAuth';
@@ -320,6 +322,10 @@ function BookingConfirmModal({
   canSubmit,
   headingText,
   buttonTitle,
+  showRewardToggle,
+  rewardExpiresAt,
+  useReward,
+  onToggleReward,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -329,9 +335,18 @@ function BookingConfirmModal({
   canSubmit: boolean;
   headingText: string;
   buttonTitle: string;
+  showRewardToggle?: boolean;
+  rewardExpiresAt?: string | null;
+  useReward?: boolean;
+  onToggleReward?: (next: boolean) => void;
 }) {
   const { t } = useTranslation();
   const disabled = submitting || !canSubmit;
+  // rewardExpiresAt is an exclusive boundary (first instant no longer valid) -- subtract a day to
+  // show the customer the last actual usable date.
+  const rewardExpiresLabel = rewardExpiresAt
+    ? formatDateDmy(new Date(new Date(rewardExpiresAt).getTime() - 24 * 60 * 60 * 1000))
+    : '';
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={bookingStyles.confirmRoot}>
@@ -377,6 +392,24 @@ function BookingConfirmModal({
                 ))
               )}
             </View>
+
+            {showRewardToggle ? (
+              <View style={bookingStyles.rewardRow}>
+                <View style={bookingStyles.rewardTextCol}>
+                  <Text style={bookingStyles.rewardTitle}>{t('booking.birthdayRewardToggleTitle')}</Text>
+                  <Text style={bookingStyles.rewardBody}>
+                    {t('booking.birthdayRewardToggleBody', { date: rewardExpiresLabel })}
+                  </Text>
+                </View>
+                <Switch
+                  value={!!useReward}
+                  onValueChange={onToggleReward}
+                  trackColor={{ false: colors.border, true: colors.accent + '77' }}
+                  thumbColor={useReward ? colors.accent : colors.surface}
+                  ios_backgroundColor={colors.border}
+                />
+              </View>
+            ) : null}
           </View>
 
           <View style={bookingStyles.confirmFooter}>
@@ -476,6 +509,10 @@ export function BookingScreen() {
     },
     modals: mod,
   } = booking;
+
+  /** Redemption is only offered for a brand-new booking, never a reschedule — same scoping as the
+   * backend, which only wires this flag from the plain create endpoint. */
+  const { rewardStatus, useReward, setUseReward } = useBirthdayReward(editingAppointmentId ? null : token);
 
   const {
     setShowBranchModal,
@@ -638,7 +675,7 @@ export function BookingScreen() {
     const wasEdit = !!editingAppointmentId;
     /** Wait for the server's real answer before claiming success — the customer's true
      * appointment count (e.g. the 2-future-appointments limit) is only known for certain here. */
-    const result = await handleConfirm(token);
+    const result = await handleConfirm(token, { useBirthdayReward: !wasEdit && useReward });
     if (result.success) {
       setBookingSuccessWasEdit(wasEdit);
       setShowBookingSuccess(true);
@@ -1054,6 +1091,10 @@ export function BookingScreen() {
         canSubmit={canConfirm}
         headingText={confirmHeading}
         buttonTitle={confirmCta}
+        showRewardToggle={!editingAppointmentId && rewardStatus.active}
+        rewardExpiresAt={rewardStatus.expiresAt}
+        useReward={useReward}
+        onToggleReward={setUseReward}
       />
 
       {/*
@@ -1585,6 +1626,30 @@ const bookingStyles = StyleSheet.create({
   confirmRowHairline: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
+  },
+  rewardRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.accent + '33',
+    backgroundColor: colors.accent + '0f',
+  },
+  rewardTextCol: { flex: 1, alignItems: 'flex-end' },
+  rewardTitle: {
+    ...textStyles.bodyMedium,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  rewardBody: {
+    ...textStyles.caption,
+    color: colors.textSecondary,
+    textAlign: 'right',
+    marginTop: 2,
   },
   /** Label on the logical start (right in RTL) — read before the value */
   confirmRowLabelInline: {

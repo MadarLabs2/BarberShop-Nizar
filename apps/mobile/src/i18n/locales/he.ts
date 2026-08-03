@@ -283,6 +283,8 @@ export const he = {
     confirmHeadingBook: 'לאישור והזמנת התור',
     confirmHeadingEdit: 'לאישור עדכון התור',
     confirmSummaryCaption: 'סיכום',
+    birthdayRewardToggleTitle: '🎂 תור חינם ליום הולדת',
+    birthdayRewardToggleBody: 'בתוקף עד {{date}} — הפעילו כדי לקבוע את התור הזה בחינם',
     /** Row label in confirm sheet — staff member name */
     confirmSummaryStaff: 'ספר',
     chooseBarber: 'בחר ספר',

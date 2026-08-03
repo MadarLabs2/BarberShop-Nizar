@@ -22,6 +22,8 @@ import { NotificationsModule } from './notifications';
 import { NotificationsService } from './notifications';
 import { WaitlistModule } from './waitlist/waitlist.module';
 import { WaitlistService } from './waitlist/waitlist.service';
+import { BirthdayRewardsModule } from './modules/birthday-rewards.module';
+import { BirthdayRewardsService } from './modules/birthday-rewards.service';
 import {
   israelTodayYmd,
   israelNowMinutesSinceMidnight,
@@ -135,6 +137,7 @@ export class BookingsController {
     private readonly notifications: NotificationsService,
     private readonly waitlist: WaitlistService,
     private readonly cache: CacheService,
+    private readonly birthdayRewards: BirthdayRewardsService,
   ) {}
 
   /**
@@ -299,6 +302,16 @@ export class BookingsController {
     );
   }
 
+  /** Lazy check: grants this year's/last year's birthday reward if the customer is inside their
+   * window and doesn't already have one, then returns current redeemable status. Called by the
+   * booking screen on mount -- not folded into GET /auth/me, which TokenAuthGuard calls on every
+   * single authenticated request across the whole API. */
+  @Get('birthday-reward')
+  @UseGuards(TokenAuthGuard)
+  async getBirthdayRewardStatus(@RequestUser() user: UserPayload) {
+    return this.birthdayRewards.reconcileAndGetStatus(user);
+  }
+
   @Post()
   @UseGuards(ThrottlerGuard, TokenAuthGuard)
   @Throttle({ writes: { limit: 48, ttl: 60_000 } })
@@ -311,9 +324,13 @@ export class BookingsController {
       serviceId?: string;
       date?: string;
       time?: string;
+      /** Customer opted to redeem their birthday reward for this booking. The backend
+       * independently re-validates eligibility and forces price to 0 at the DB level -- this flag
+       * is a UX convenience only, never a trust boundary. */
+      useBirthdayReward?: boolean;
     },
   ) {
-    return this.createBookingCore(user, dto);
+    return this.createBookingCore(user, dto, { useBirthdayReward: dto.useBirthdayReward });
   }
 
   /** First customer to confirm a freed waitlist slot gets the appointment; others’ offers are superseded. */
@@ -382,7 +399,14 @@ export class BookingsController {
       date?: string;
       time?: string;
     },
-    opts?: { winningOfferId?: string; waitlistAccept?: boolean; replaceAppointmentId?: string },
+    opts?: {
+      winningOfferId?: string;
+      waitlistAccept?: boolean;
+      replaceAppointmentId?: string;
+      /** Redeem the customer's birthday reward for this booking instead of charging normal price.
+       * Only ever set from the plain create() path -- reschedule/waitlist-accept never pass this. */
+      useBirthdayReward?: boolean;
+    },
   ) {
     const { branchId, staffId, serviceId, date, time } = dto;
     if (!branchId || !staffId || !serviceId || !date || !time) {
@@ -674,53 +698,82 @@ export class BookingsController {
       );
     }
 
-    /** Atomic in the DB (migration 043): re-checks blocked_slots and inserts the row under a
-     * per-staff advisory lock — the same function/lock reschedule uses above, so a concurrent
-     * admin block on this staff member can't slip in between this app-level check and the write. */
-    const { data: insertedRows, error } = await this.supabase.getClient().rpc('create_or_reschedule_appointment', {
-      p_id: null,
-      p_profile_id: user.id,
-      p_client_phone: clientPhone,
-      p_client_name: clientName,
-      p_branch_id: branchId,
-      p_staff_id: staffId,
-      p_service_id: serviceId,
-      p_date: date,
-      p_time: timeNormalized,
-      p_duration: svc.duration,
-      p_service_name: svc.name,
-      p_staff_name: st.name,
-      p_branch_name: br.name,
-      p_price: svc.price,
-      p_service_name_he: svc.nameHe,
-      p_service_name_ar: svc.nameAr,
-      p_branch_name_he: br.name_he,
-      p_branch_name_ar: br.name_ar,
-    });
+    let inserted: Record<string, unknown> | null;
 
-    if (error) {
-      const code = (error as { code?: string }).code;
-      const message = (error as { message?: string }).message || '';
-      /** 23505 = exact-time unique index; 23P01 = the overlap exclusion constraint (different
-       * start times that still overlap in duration); SLOT_BLOCKED = a concurrent admin block —
-       * all three mean the DB rejected a real conflict that slipped past the application-level
-       * check above under concurrent requests. */
-      if (code === '23505' || code === '23P01' || message.includes('SLOT_BLOCKED')) {
-        throw new BadRequestException(
-          opts?.waitlistAccept
-            ? 'מישהו אחר הספיק לאשר את השעה לפניך. השעה נתפסה — נשארת ברשימת ההמתנה לשעות נוספות.'
-            : 'השעה נתפסה על ידי לקוח אחר — נסו שוב או בחרו שעה אחרת.',
-        );
+    if (opts?.useBirthdayReward) {
+      /** Atomic in the DB (migration 049): locks + validates the caller's birthday reward, books
+       * through the same create_or_reschedule_appointment RPC (so it inherits every check below
+       * too), forces price to 0 at the DB level, and marks the reward redeemed — all in one
+       * transaction. Throws BadRequestException itself with the right user-facing message
+       * (including "no reward available"), so no separate error-mapping needed here. */
+      inserted = (await this.birthdayRewards.redeem({
+        profileId: user.id,
+        clientPhone,
+        clientName,
+        branchId,
+        staffId,
+        serviceId,
+        date,
+        time: timeNormalized,
+        duration: svc.duration,
+        serviceName: svc.name,
+        staffName: st.name,
+        branchName: br.name,
+        serviceNameHe: svc.nameHe,
+        serviceNameAr: svc.nameAr,
+        branchNameHe: br.name_he,
+        branchNameAr: br.name_ar,
+      })) as unknown as Record<string, unknown>;
+    } else {
+      /** Atomic in the DB (migration 043): re-checks blocked_slots and inserts the row under a
+       * per-staff advisory lock — the same function/lock reschedule uses above, so a concurrent
+       * admin block on this staff member can't slip in between this app-level check and the write. */
+      const { data: insertedRows, error } = await this.supabase.getClient().rpc('create_or_reschedule_appointment', {
+        p_id: null,
+        p_profile_id: user.id,
+        p_client_phone: clientPhone,
+        p_client_name: clientName,
+        p_branch_id: branchId,
+        p_staff_id: staffId,
+        p_service_id: serviceId,
+        p_date: date,
+        p_time: timeNormalized,
+        p_duration: svc.duration,
+        p_service_name: svc.name,
+        p_staff_name: st.name,
+        p_branch_name: br.name,
+        p_price: svc.price,
+        p_service_name_he: svc.nameHe,
+        p_service_name_ar: svc.nameAr,
+        p_branch_name_he: br.name_he,
+        p_branch_name_ar: br.name_ar,
+      });
+
+      if (error) {
+        const code = (error as { code?: string }).code;
+        const message = (error as { message?: string }).message || '';
+        /** 23505 = exact-time unique index; 23P01 = the overlap exclusion constraint (different
+         * start times that still overlap in duration); SLOT_BLOCKED = a concurrent admin block —
+         * all three mean the DB rejected a real conflict that slipped past the application-level
+         * check above under concurrent requests. */
+        if (code === '23505' || code === '23P01' || message.includes('SLOT_BLOCKED')) {
+          throw new BadRequestException(
+            opts?.waitlistAccept
+              ? 'מישהו אחר הספיק לאשר את השעה לפניך. השעה נתפסה — נשארת ברשימת ההמתנה לשעות נוספות.'
+              : 'השעה נתפסה על ידי לקוח אחר — נסו שוב או בחרו שעה אחרת.',
+          );
+        }
+        if (message.includes('MAX_UPCOMING_APPOINTMENTS')) {
+          throw new BadRequestException(
+            'ניתן להחזיק עד שני תורים עתידיים בלבד. בטלו או השלימו תור לפני קביעת תור נוסף.',
+          );
+        }
+        throw new BadRequestException('Failed to create appointment');
       }
-      if (message.includes('MAX_UPCOMING_APPOINTMENTS')) {
-        throw new BadRequestException(
-          'ניתן להחזיק עד שני תורים עתידיים בלבד. בטלו או השלימו תור לפני קביעת תור נוסף.',
-        );
-      }
-      throw new BadRequestException('Failed to create appointment');
+
+      inserted = Array.isArray(insertedRows) ? insertedRows[0] : insertedRows;
     }
 
-    const inserted = Array.isArray(insertedRows) ? insertedRows[0] : insertedRows;
     if (!inserted) {
       throw new BadRequestException('Failed to create appointment');
     }
@@ -1073,7 +1126,7 @@ export class BookingsController {
 }
 
 @Module({
-  imports: [AuthModule, NotificationsModule, WaitlistModule],
+  imports: [AuthModule, NotificationsModule, WaitlistModule, BirthdayRewardsModule],
   controllers: [BookingsController],
 })
 export class BookingsModule {}

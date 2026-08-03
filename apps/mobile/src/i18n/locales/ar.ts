@@ -282,6 +282,8 @@ export const ar: TranslationTree = {
     confirmHeadingBook: 'للتأكيد وحجز الموعد',
     confirmHeadingEdit: 'لتأكيد تحديث الموعد',
     confirmSummaryCaption: 'ملخص',
+    birthdayRewardToggleTitle: '🎂 موعد مجاني بمناسبة عيد ميلادك',
+    birthdayRewardToggleBody: 'ساري حتى {{date}} — فعّل لحجز هذا الموعد مجانًا',
     confirmSummaryStaff: 'الحلاق',
     chooseBarber: 'اختر الحلاق',
     tapPhotoHint: 'اضغط على الصورة للمتابعة',

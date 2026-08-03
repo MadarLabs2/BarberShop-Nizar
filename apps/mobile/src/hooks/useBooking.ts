@@ -942,7 +942,7 @@ export function useBooking(_token: string | null) {
   );
 
   const handleConfirm = useCallback(
-    async (authToken: string) => {
+    async (authToken: string, opts?: { useBirthdayReward?: boolean }) => {
       if (pendingWaitlistOfferId && !editingAppointmentId) {
         if (!branch || !staffMember || !service || !selectedDate || !selectedTime) {
           return { success: false, error: 'חסרים פרטים' };
@@ -1090,6 +1090,7 @@ export function useBooking(_token: string | null) {
             serviceId: service.id,
             date: dateStr,
             time: selectedTime,
+            useBirthdayReward: opts?.useBirthdayReward,
           },
           authToken
         );

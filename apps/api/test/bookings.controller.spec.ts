@@ -1,10 +1,12 @@
 import { Test } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { BookingsController } from '../src/bookings';
 import { SupabaseService } from '../src/core/supabase';
 import { NotificationsService } from '../src/notifications';
 import { WaitlistService } from '../src/waitlist/waitlist.service';
 import { CacheService } from '../src/core/cache.service';
+import { BirthdayRewardsService } from '../src/modules/birthday-rewards.service';
 import { TokenAuthGuard } from '../src/auth/auth.guard';
 import { israelTodayYmd, addDaysToYmd, dayOfWeekForYmd } from '../src/core/israel-time';
 import type { UserPayload } from '../src/auth';
@@ -117,6 +119,10 @@ async function buildController(tables: Record<string, Record<string, unknown>[]>
     invalidateBookingsSlotsForStaffDate: jest.fn().mockResolvedValue(undefined),
     invalidateBookingsSlotsForStaff: jest.fn().mockResolvedValue(undefined),
   };
+  const fakeBirthdayRewards = {
+    reconcileAndGetStatus: jest.fn().mockResolvedValue({ active: false, expiresAt: null }),
+    redeem: jest.fn().mockRejectedValue(new BadRequestException('אין ברשותך תור חינם פעיל ליום הולדת')),
+  };
 
   const moduleRef = await Test.createTestingModule({
     controllers: [BookingsController],
@@ -125,6 +131,7 @@ async function buildController(tables: Record<string, Record<string, unknown>[]>
       { provide: NotificationsService, useValue: fakeNotifications },
       { provide: WaitlistService, useValue: fakeWaitlist },
       { provide: CacheService, useValue: fakeCache },
+      { provide: BirthdayRewardsService, useValue: fakeBirthdayRewards },
     ],
   })
     .overrideGuard(TokenAuthGuard)
@@ -134,7 +141,7 @@ async function buildController(tables: Record<string, Record<string, unknown>[]>
     .compile();
 
   const controller = moduleRef.get(BookingsController);
-  return { controller, fakeClient, fakeWaitlist };
+  return { controller, fakeClient, fakeWaitlist, fakeBirthdayRewards };
 }
 
 describe('BookingsController — required booking scenarios', () => {

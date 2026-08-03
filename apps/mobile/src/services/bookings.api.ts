@@ -131,7 +131,16 @@ export type CreatedAppointment = {
 };
 
 export async function createBooking(
-  data: { branchId: string; staffId: string; serviceId: string; date: string; time: string },
+  data: {
+    branchId: string;
+    staffId: string;
+    serviceId: string;
+    date: string;
+    time: string;
+    /** Redeem the customer's active birthday reward for this booking (price forced to 0
+     * server-side — the backend independently re-validates eligibility regardless of this flag). */
+    useBirthdayReward?: boolean;
+  },
   token: string
 ): Promise<CreatedAppointment> {
   return apiFetch<CreatedAppointment>('/bookings', {
@@ -139,6 +148,14 @@ export async function createBooking(
     body: JSON.stringify(data),
     token,
   });
+}
+
+export type BirthdayRewardStatus = { active: boolean; expiresAt: string | null };
+
+/** Lazy check: also grants this year's birthday reward server-side if the customer just entered
+ * their window and doesn't already have one. Call whenever the booking screen mounts. */
+export async function getBirthdayRewardStatus(token: string): Promise<BirthdayRewardStatus> {
+  return apiFetch<BirthdayRewardStatus>('/bookings/birthday-reward', { token });
 }
 
 export async function updateAppointment(
